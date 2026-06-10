@@ -116,8 +116,9 @@ uninstall() {
 # ---------------------------------------------------------------------------
 download_binary() {
   local url="${PANEL_URL%/}/agent/download/logwatch-agent-linux-${ARCH}"
-  local curl_opts="-fSL"
-  [ "$INSECURE" = "true" ] && curl_opts="-fSLk"
+  # Retries cover flaky connection establishment to the panel host.
+  local curl_opts="-fSL --retry 10 --retry-delay 3 --retry-connrefused"
+  [ "$INSECURE" = "true" ] && curl_opts="$curl_opts -k"
   log "downloading agent binary: ${url}"
   if curl $curl_opts -o "${BIN_PATH}.new" "$url"; then
     chmod 0755 "${BIN_PATH}.new"
@@ -256,8 +257,8 @@ EOF
 }
 
 test_connection() {
-  local curl_opts="-fsS"
-  [ "$INSECURE" = "true" ] && curl_opts="-fsSk"
+  local curl_opts="-fsS --retry 5 --retry-delay 2 --retry-connrefused"
+  [ "$INSECURE" = "true" ] && curl_opts="$curl_opts -k"
   log "testing panel connectivity..."
   if curl $curl_opts "${PANEL_URL%/}/api/v1/health" >/dev/null 2>&1; then
     ok "panel reachable at ${PANEL_URL}"
