@@ -208,8 +208,10 @@ async function renderServerDetail(id) {
     };
     document.getElementById('delBtn').onclick = async () => {
       if (!confirm(`Delete "${s.name}" and all its logs?`)) return;
-      await api(`/api/v1/servers/${s.id}`, { method: 'DELETE' });
-      toast('Server deleted', 'success'); location.hash = '#/dashboard';
+      try {
+        await api(`/api/v1/servers/${s.id}`, { method: 'DELETE' });
+        toast('Server deleted', 'success'); location.hash = '#/dashboard';
+      } catch (err) { toast(err.message, 'error'); }
     };
   } catch (err) { toast(err.message, 'error'); }
 }
@@ -511,8 +513,8 @@ function closeModal() { document.getElementById('modalBack')?.remove(); }
 Object.assign(window.LW, {
   closeModal,
   testChan: async (id) => { try { await api(`/api/v1/channels/${id}/test`, { method: 'POST' }); toast('Test sent', 'success'); } catch (e) { toast(e.message, 'error'); } },
-  delChan: async (id) => { if (confirm('Delete channel?')) { await api(`/api/v1/channels/${id}`, { method: 'DELETE' }); reloadAlerts(); } },
-  delRule: async (id) => { if (confirm('Delete rule?')) { await api(`/api/v1/rules/${id}`, { method: 'DELETE' }); reloadAlerts(); } },
+  delChan: async (id) => { if (confirm('Delete channel?')) { try { await api(`/api/v1/channels/${id}`, { method: 'DELETE' }); reloadAlerts(); } catch (e) { toast(e.message, 'error'); } } },
+  delRule: async (id) => { if (confirm('Delete rule?')) { try { await api(`/api/v1/rules/${id}`, { method: 'DELETE' }); reloadAlerts(); } catch (e) { toast(e.message, 'error'); } } },
   editRule: (id) => ruleModal((window._rules || []).find((r) => r.id === id)),
   delUser: async (id) => { if (confirm('Delete user?')) { try { await api(`/api/v1/users/${id}`, { method: 'DELETE' }); renderSettings(); } catch (e) { toast(e.message, 'error'); } } },
 });

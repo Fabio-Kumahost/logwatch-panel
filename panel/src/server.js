@@ -38,6 +38,18 @@ export async function buildApp() {
     bodyLimit: 16 * 1024 * 1024, // 16MB to accommodate large log batches
   });
 
+  // Tolerate an empty body sent with a JSON content-type (browsers/clients often
+  // do this on POST/DELETE without payload) instead of Fastify's default 400.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    if (body === '' || body === undefined) return done(null, undefined);
+    try {
+      done(null, JSON.parse(body));
+    } catch (err) {
+      err.statusCode = 400;
+      done(err, undefined);
+    }
+  });
+
   await app.register(fastifyJwt, { secret: config.jwtSecret });
   await app.register(fastifyRateLimit, {
     global: false,

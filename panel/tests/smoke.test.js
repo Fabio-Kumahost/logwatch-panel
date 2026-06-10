@@ -203,10 +203,11 @@ test('deleting a server with many logs responds fast (no event-loop block)', asy
   }
 
   const t0 = Date.now();
+  // Browsers send a JSON content-type even without a body — this must NOT 400.
   const del = await app.inject({
     method: 'DELETE',
     url: `/api/v1/servers/${id}`,
-    headers: { authorization: `Bearer ${userToken}` },
+    headers: { authorization: `Bearer ${userToken}`, 'content-type': 'application/json' },
   });
   const elapsed = Date.now() - t0;
   assert.equal(del.statusCode, 200);
@@ -222,6 +223,24 @@ test('deleting a server with many logs responds fast (no event-loop block)', asy
   await new Promise((r) => setTimeout(r, 300));
   const count = db.prepare('SELECT COUNT(*) AS n FROM logs WHERE server_id = ?').get(id).n;
   assert.equal(count, 0, 'background purge should remove all logs');
+});
+
+test('POST with JSON content-type and empty body does not 400 (browser behavior)', async () => {
+  // Rotate has no request body; the browser still sends content-type json.
+  const create = await app.inject({
+    method: 'POST',
+    url: '/api/v1/servers',
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: { name: 'rotate-me' },
+  });
+  const { id } = create.json();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/api/v1/servers/${id}/rotate`,
+    headers: { authorization: `Bearer ${userToken}`, 'content-type': 'application/json' },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.match(res.json().token, /^[a-f0-9]{64}$/);
 });
 
 test('agent install script is served publicly', async () => {

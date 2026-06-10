@@ -7,9 +7,12 @@ export function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 export function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
 export async function api(path, { method = 'GET', body, auth = true } = {}) {
-  const headers = { 'content-type': 'application/json' };
+  const headers = {};
+  // Only declare a JSON content-type when we actually send a body — Fastify
+  // rejects an empty body with a JSON content-type as 400 Bad Request.
+  if (body !== undefined) headers['content-type'] = 'application/json';
   if (auth && getToken()) headers.authorization = `Bearer ${getToken()}`;
-  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   if (res.status === 401 && auth) {
     clearToken();
     location.hash = '#/login';
