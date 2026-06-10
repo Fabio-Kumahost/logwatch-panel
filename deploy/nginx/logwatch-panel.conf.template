@@ -4,8 +4,10 @@
 # SSL is added automatically by certbot if you choose a domain.
 
 server {
-    listen 80;
-    listen [::]:80;
+    # default_server so the panel also answers when reached by raw IP, not only
+    # by its server_name. Helpful when DNS is flaky or for direct-IP access.
+    listen 80 default_server;
+    listen [::]:80 default_server;
     server_name __DOMAIN__;
 
     # Reasonable upload size for large log batches.
