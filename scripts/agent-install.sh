@@ -182,9 +182,12 @@ write_config() {
   "exclude": []
 }
 EOF
-  chmod 0640 "$CONF_FILE"
   chown -R "$RUNTIME_USER":"$RUNTIME_GROUP" "$STATE_DIR" 2>/dev/null || true
-  chown root:"$RUNTIME_GROUP" "$CONF_FILE" 2>/dev/null || true
+  # The agent runs as $RUNTIME_USER, so it must own (and be able to read) its
+  # config, which holds the token. Keep it readable only by that user.
+  chown "$RUNTIME_USER":"$RUNTIME_GROUP" "$CONF_DIR" "$CONF_FILE" 2>/dev/null || true
+  chmod 0750 "$CONF_DIR"
+  chmod 0600 "$CONF_FILE"
   ok "config written to ${CONF_FILE}"
 }
 
