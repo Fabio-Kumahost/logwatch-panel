@@ -1,8 +1,18 @@
-import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo } from '/js/api.js?v=1.3.0';
-import { suggestFix } from '/js/solutions.js?v=1.3.0';
+import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo } from '/js/api.js?v=1.3.1';
+import { suggestFix } from '/js/solutions.js?v=1.3.1';
 
 const root = document.getElementById('root');
 let me = null;
+
+// Connection keep-alive ----------------------------------------------------
+// The hosting network drops some brand-new TCP connections while established
+// ones stay healthy. A periodic lightweight ping keeps a pooled connection
+// warm so user actions reuse it instead of opening a fresh (riskier) one.
+setInterval(() => {
+  if (document.visibilityState === 'visible' && getToken()) {
+    fetch('/api/v1/health', { cache: 'no-store' }).catch(() => {});
+  }
+}, 20000);
 
 // Theme -------------------------------------------------------------------
 const savedTheme = localStorage.getItem('lw_theme') || 'dark';

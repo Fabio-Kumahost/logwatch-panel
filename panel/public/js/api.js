@@ -6,13 +6,28 @@ export function getToken() { return localStorage.getItem(TOKEN_KEY); }
 export function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 export function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
+// fetch with automatic retry: the hosting network sometimes drops brand-new
+// TCP connections ("Failed to fetch"); a quick retry almost always succeeds.
+async function fetchRetry(path, opts, retries = 2) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(path, opts);
+    } catch (err) {
+      if (attempt >= retries) {
+        throw new Error('Network error — the panel could not be reached. The connection usually recovers within seconds; please try again.');
+      }
+      await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+    }
+  }
+}
+
 export async function api(path, { method = 'GET', body, auth = true } = {}) {
   const headers = {};
   // Only declare a JSON content-type when we actually send a body — Fastify
   // rejects an empty body with a JSON content-type as 400 Bad Request.
   if (body !== undefined) headers['content-type'] = 'application/json';
   if (auth && getToken()) headers.authorization = `Bearer ${getToken()}`;
-  const res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  const res = await fetchRetry(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   if (res.status === 401 && auth) {
     clearToken();
     location.hash = '#/login';
