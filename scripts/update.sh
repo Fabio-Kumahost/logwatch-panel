@@ -14,6 +14,10 @@ die() { printf '\033[0;31m[fail]\033[0m %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "must run as root."
 [ -d "${INSTALL_DIR}/.git" ] || die "no git checkout at ${INSTALL_DIR}; was the panel installed from the installer?"
 
+# The checkout is owned by the service user but we run as root — tell git
+# this repo is trusted so it doesn't refuse with "dubious ownership".
+git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+
 log "fetching latest ${BRANCH}..."
 git -C "$INSTALL_DIR" fetch --depth 1 origin "$BRANCH" >/dev/null
 git -C "$INSTALL_DIR" reset --hard "origin/${BRANCH}" >/dev/null
