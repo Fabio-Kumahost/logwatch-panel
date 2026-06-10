@@ -1,0 +1,12 @@
+[Unit]
+Description=LogWatch Panel one-click updater
+# Triggered by logwatch-panel-updater.path when the panel requests an update.
+
+[Service]
+Type=oneshot
+# Remove the trigger first so the path unit cannot re-fire in a loop.
+ExecStartPre=/bin/rm -f /opt/logwatch-panel/panel/data/update-requested
+# Run a COPY of update.sh: git reset rewrites the script on disk mid-run,
+# which corrupts an actively executing bash script.
+ExecStart=/usr/bin/env bash -c 'tmp=$(mktemp); cp /opt/logwatch-panel/scripts/update.sh "$tmp"; bash "$tmp"; st=$?; rm -f "$tmp"; exit $st'
+TimeoutStartSec=600

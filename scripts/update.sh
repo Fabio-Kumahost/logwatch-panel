@@ -25,6 +25,17 @@ git -C "$INSTALL_DIR" reset --hard "origin/${BRANCH}" >/dev/null
 log "updating dependencies..."
 ( cd "${INSTALL_DIR}/panel" && npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1 ) || die "npm install failed"
 
+# Install/refresh the one-click updater so future updates can be triggered
+# straight from the panel UI (Settings -> Software update -> Update now).
+if [ -f "${INSTALL_DIR}/deploy/systemd/logwatch-panel-updater.path" ]; then
+  install -m644 "${INSTALL_DIR}/deploy/systemd/logwatch-panel-updater.service" /etc/systemd/system/ 2>/dev/null || true
+  install -m644 "${INSTALL_DIR}/deploy/systemd/logwatch-panel-updater.path" /etc/systemd/system/ 2>/dev/null || true
+  rm -f "${INSTALL_DIR}/panel/data/update-requested" 2>/dev/null || true
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl enable --now logwatch-panel-updater.path >/dev/null 2>&1 || true
+  log "one-click updater installed (panel can now self-update from the UI)."
+fi
+
 # Schema is idempotent and applied on boot; run migrate explicitly too.
 ( cd "${INSTALL_DIR}/panel" && LOGWATCH_CONFIG=/etc/logwatch-panel/config.env node src/db/migrate.js >/dev/null ) || true
 

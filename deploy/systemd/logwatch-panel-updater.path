@@ -1,0 +1,12 @@
+[Unit]
+Description=Watch for LogWatch Panel one-click update requests
+
+[Path]
+# The panel (unprivileged) can only write inside its data dir; dropping this
+# file is the only way it can request an update. The updater service below
+# runs the fixed update script as root — no privileges leak into the panel.
+PathExists=/opt/logwatch-panel/panel/data/update-requested
+Unit=logwatch-panel-updater.service
+
+[Install]
+WantedBy=multi-user.target

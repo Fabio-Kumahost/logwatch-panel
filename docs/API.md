@@ -125,6 +125,10 @@ Emits one JSON log entry per message.
 - `GET /api/v1/system/update` → `{ current, latest, update_available, checked_at, error, update_command }`
   — cached result of the 6-hourly GitHub version check.
 - `POST /api/v1/system/update/check` *(operator+)* → forces a re-check now.
+- `POST /api/v1/system/update/apply` *(admin)* → one-click update. Writes a trigger
+  file that a root systemd path-unit (`logwatch-panel-updater.path`) picks up to run
+  `scripts/update.sh` — the sandboxed panel itself never gains privileges. Returns
+  `409` with the manual `update_command` if the updater unit is not installed.
 
 Note: `DELETE /api/v1/servers/:id` returns immediately; the server's log history is
 purged in background chunks so large histories never block the panel.

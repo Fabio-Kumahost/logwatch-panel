@@ -263,6 +263,19 @@ test('POST /delete alias removes a server (firewalls may drop DELETE)', async ()
   assert.ok(!list.json().some((s) => s.id === id));
 });
 
+test('one-click update apply returns 409 with fallback when updater unit absent', async () => {
+  // On hosts without the systemd path-unit the API must fail gracefully and
+  // hand the manual command back to the UI.
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/system/update/apply',
+    headers: { authorization: `Bearer ${userToken}`, 'content-type': 'application/json' },
+    payload: {},
+  });
+  assert.equal(res.statusCode, 409);
+  assert.match(res.json().update_command, /update\.sh/);
+});
+
 test('agent install script is served publicly', async () => {
   const res = await app.inject({ method: 'GET', url: '/agent/install.sh' });
   assert.equal(res.statusCode, 200);

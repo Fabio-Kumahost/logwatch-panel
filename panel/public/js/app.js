@@ -1,4 +1,4 @@
-import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo } from '/js/api.js?v=1.1.2';
+import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo } from '/js/api.js?v=1.2.0';
 
 const root = document.getElementById('root');
 let me = null;
@@ -127,12 +127,53 @@ async function renderUpdateBanner() {
     if (!el) return;
     el.innerHTML = `<div class="card" style="margin-bottom:16px;border-color:var(--accent)">
       🚀 <b>Update available:</b> v${esc(u.current)} → <b>v${esc(u.latest)}</b>
-      <span class="dim">— run this on your panel VPS:</span>
-      <div class="code-box" style="margin-top:8px">${esc(u.update_command)}</div>
-      <button class="btn sm" style="margin-top:8px" id="copyUpd">Copy command</button>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="applyUpdBanner">⬆ Update now</button>
+        <button class="btn secondary sm" id="copyUpd">Copy manual command</button>
+      </div>
+      <div id="updProgress" class="dim" style="margin-top:8px"></div>
     </div>`;
+    document.getElementById('applyUpdBanner').onclick = () => applyUpdate(u.current, 'applyUpdBanner');
     document.getElementById('copyUpd').onclick = () => { navigator.clipboard.writeText(u.update_command); toast('Copied', 'success'); };
   } catch { /* update info is best-effort */ }
+}
+
+// One-click update: trigger server-side updater, then poll until the panel
+// comes back with a new version and reload the UI.
+async function applyUpdate(currentVersion, btnId) {
+  const btn = document.getElementById(btnId);
+  const progress = document.getElementById('updProgress');
+  const say = (msg) => { if (progress) progress.textContent = msg; };
+  if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+  try {
+    await api('/api/v1/system/update/apply', { method: 'POST', body: {} });
+  } catch (err) {
+    toast(err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '⬆ Update now'; }
+    return;
+  }
+  say('Update started — the panel will restart, this takes ~1 minute…');
+  const t0 = Date.now();
+  while (Date.now() - t0 < 4 * 60 * 1000) {
+    await new Promise((r) => setTimeout(r, 4000));
+    try {
+      const res = await fetch('/api/v1/health', { cache: 'no-store' });
+      if (!res.ok) continue;
+      const h = await res.json();
+      if (h.version && h.version !== currentVersion) {
+        say(`Updated to v${h.version} — reloading…`);
+        toast(`Updated to v${h.version}`, 'success');
+        setTimeout(() => location.reload(), 1200);
+        return;
+      }
+      say(`Panel is up (still v${h.version}) — waiting for the new version…`);
+    } catch {
+      say('Panel is restarting…'); // expected while the service restarts
+    }
+  }
+  say('');
+  toast('Update did not finish in time — check: journalctl -u logwatch-panel-updater', 'error');
+  if (btn) { btn.disabled = false; btn.textContent = '⬆ Update now'; }
 }
 
 function serverCard(s) {
@@ -433,8 +474,11 @@ async function renderSettings() {
         ${upd.error ? ` · <span style="color:var(--orange)">check failed: ${esc(upd.error)}</span>` : ''}
       </div>
       ${upd.update_available
-        ? `<div style="margin-top:8px">🚀 <b>Update available.</b> Run on the panel VPS:</div>
-           <div class="code-box" style="margin-top:6px">${esc(upd.update_command)}</div>`
+        ? `<div style="margin-top:8px">🚀 <b>Update available.</b></div>
+           <div class="row" style="margin-top:8px"><button class="btn" id="applyUpdSettings">⬆ Update now</button></div>
+           <div id="updProgress" class="dim" style="margin-top:8px"></div>
+           <details style="margin-top:8px"><summary class="dim">Manual command (fallback)</summary>
+             <div class="code-box" style="margin-top:6px">${esc(upd.update_command)}</div></details>`
         : `<div class="dim" style="margin-top:6px">${upd.latest ? 'You are up to date.' : 'No version information yet.'}</div>`}
       <div class="row" style="margin-top:10px">
         <button class="btn secondary sm" id="checkUpd">Check now</button>
@@ -469,6 +513,8 @@ async function renderSettings() {
       </div>
     </div>` : ''}`;
 
+  const applyBtn = document.getElementById('applyUpdSettings');
+  if (applyBtn && upd) applyBtn.onclick = () => applyUpdate(upd.current, 'applyUpdSettings');
   const checkBtn = document.getElementById('checkUpd');
   if (checkBtn) {
     checkBtn.onclick = async () => {

@@ -166,7 +166,12 @@ EOF
 
 install_service() {
   install -m644 "${INSTALL_DIR}/deploy/systemd/logwatch-panel.service" /etc/systemd/system/logwatch-panel.service
+  # One-click updater: lets the panel trigger scripts/update.sh via a root
+  # path-unit without granting the panel itself any privileges.
+  install -m644 "${INSTALL_DIR}/deploy/systemd/logwatch-panel-updater.service" /etc/systemd/system/ 2>/dev/null || true
+  install -m644 "${INSTALL_DIR}/deploy/systemd/logwatch-panel-updater.path" /etc/systemd/system/ 2>/dev/null || true
   systemctl daemon-reload
+  systemctl enable --now logwatch-panel-updater.path >/dev/null 2>&1 || true
   systemctl enable logwatch-panel >/dev/null 2>&1 || true
   systemctl restart logwatch-panel
   sleep 2
