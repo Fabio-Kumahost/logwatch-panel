@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.7.0] — 2026-06-10 — "SSO"
+### Added
+- **Single Sign-On via OpenID Connect** (Authorization Code + PKCE): works with
+  Authentik, Keycloak, Google, Azure AD, Auth0, etc. State/CSRF protection,
+  optional email-domain allowlist, auto-provisioning (default role `viewer`),
+  SSO users cannot password-login. "Sign in with SSO" button on the login page.
+  Configure with `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET`.
+
 ## [1.6.0] — 2026-06-10 — "Intelligence"
 ### Added
 - **Log pattern clustering**: lines are fingerprinted on ingest (variables →

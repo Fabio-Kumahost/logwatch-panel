@@ -551,6 +551,30 @@ test('anomaly detection runs without throwing', async () => {
   assert.doesNotThrow(() => runOnce());
 });
 
+test('SSO config reports disabled and start 404s when not configured', async () => {
+  const cfg = await app.inject({ method: 'GET', url: '/api/v1/auth/oidc/config' });
+  assert.equal(cfg.statusCode, 200);
+  assert.equal(cfg.json().enabled, false);
+  const start = await app.inject({ method: 'GET', url: '/api/v1/auth/oidc/start' });
+  assert.equal(start.statusCode, 404);
+});
+
+test('SSO provisionUser creates then reuses a panel user', async () => {
+  const { provisionUser } = await import('../src/services/oidc.js');
+  const claims = { email: 'Sso.User@Example.com', sub: 'abc-123' };
+  const u1 = provisionUser(claims);
+  assert.equal(u1.username, 'sso.user@example.com');
+  assert.equal(u1.role, 'viewer'); // default, non-admin
+  const u2 = provisionUser(claims);
+  assert.equal(u2.id, u1.id, 'second login reuses the same user');
+  // The provisioned user cannot log in with a password.
+  const login = await app.inject({
+    method: 'POST', url: '/api/v1/auth/login',
+    payload: { username: 'sso.user@example.com', password: 'anything' },
+  });
+  assert.equal(login.statusCode, 401);
+});
+
 test('agent install script is served publicly', async () => {
   const res = await app.inject({ method: 'GET', url: '/agent/install.sh' });
   assert.equal(res.statusCode, 200);

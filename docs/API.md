@@ -148,6 +148,16 @@ Emits one JSON log entry per message.
 - `GET/POST/DELETE /api/v1/users` *(admin)* — roles: `admin`, `operator`, `viewer`.
 - `GET/PUT /api/v1/settings` — `retention_days`, `alert_channel_id` (for system alerts).
 
+## SSO (OpenID Connect)
+Enabled when `OIDC_ISSUER` + `OIDC_CLIENT_ID` + `OIDC_CLIENT_SECRET` are set.
+- `GET /api/v1/auth/oidc/config` → `{ enabled, button_label }`.
+- `GET /api/v1/auth/oidc/start` → 302 redirect to the identity provider (PKCE).
+- `GET /api/v1/auth/oidc/callback?code&state` → exchanges the code, provisions
+  the user (default role `viewer`, optional email-domain allowlist), issues a
+  panel JWT and redirects to `<PUBLIC_URL>/#sso=<jwt>` (or `#sso_error=...`).
+
+Register the redirect URI `<PUBLIC_URL>/api/v1/auth/oidc/callback` at the provider.
+
 ## Two-factor auth (TOTP)
 - `POST /api/v1/auth/2fa/setup` → `{ secret, otpauth_uri }` (not yet active).
 - `POST /api/v1/auth/2fa/enable` `{ totp }` → activates after verifying the code.

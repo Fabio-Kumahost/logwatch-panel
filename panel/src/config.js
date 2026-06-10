@@ -84,3 +84,22 @@ export const config = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   aiModel: process.env.AI_MODEL || 'claude-opus-4-8',
 };
+
+// Optional SSO via OpenID Connect (Authorization Code + PKCE). Enabled only when
+// issuer + client id + secret are all set.
+const oidcPublicUrl = config.publicUrl;
+export const oidc = {
+  enabled: !!(process.env.OIDC_ISSUER && process.env.OIDC_CLIENT_ID && process.env.OIDC_CLIENT_SECRET),
+  issuer: (process.env.OIDC_ISSUER || '').replace(/\/$/, ''),
+  clientId: process.env.OIDC_CLIENT_ID || '',
+  clientSecret: process.env.OIDC_CLIENT_SECRET || '',
+  redirectUri: process.env.OIDC_REDIRECT_URI || `${oidcPublicUrl}/api/v1/auth/oidc/callback`,
+  scope: process.env.OIDC_SCOPE || 'openid email profile',
+  defaultRole: ['admin', 'operator', 'viewer'].includes(process.env.OIDC_DEFAULT_ROLE)
+    ? process.env.OIDC_DEFAULT_ROLE
+    : 'viewer',
+  // Optional comma-separated email-domain allowlist (e.g. "example.com,corp.io").
+  allowedDomains: (process.env.OIDC_ALLOWED_DOMAINS || '')
+    .split(',').map((d) => d.trim().toLowerCase()).filter(Boolean),
+  buttonLabel: process.env.OIDC_BUTTON_LABEL || 'Sign in with SSO',
+};

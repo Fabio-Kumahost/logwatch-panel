@@ -5,6 +5,7 @@ import { verifyPassword, hashPassword } from '../auth/auth.js';
 import { requireUser } from '../auth/middleware.js';
 import { record } from '../services/audit.js';
 import { generateSecret, verifyTOTP, otpauthURI } from '../auth/totp.js';
+import { isEnabled as oidcEnabled, buildAuthUrl, handleCallback, provisionUser, oidcConfig } from '../services/oidc.js';
 
 const loginSchema = z.object({
   username: z.string().min(1).max(64),
@@ -93,6 +94,47 @@ export default async function authRoutes(app) {
     db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(request.user.id);
     record(request, '2fa.disabled', request.user.username);
     return { ok: true };
+  });
+
+  // ---- SSO (OpenID Connect) ----
+  app.get('/api/v1/auth/oidc/config', async () => ({
+    enabled: oidcEnabled(),
+    button_label: oidcEnabled() ? oidcConfig.buttonLabel : null,
+  }));
+
+  // Begin the login flow — redirect the browser to the identity provider.
+  app.get('/api/v1/auth/oidc/start', async (request, reply) => {
+    if (!oidcEnabled()) return reply.code(404).send({ error: 'SSO not enabled' });
+    try {
+      const url = await buildAuthUrl();
+      return reply.redirect(url);
+    } catch (err) {
+      request.log.error(err);
+      return reply.code(502).send({ error: `SSO start failed: ${err.message}` });
+    }
+  });
+
+  // Provider redirects back here with ?code&state. Exchange, provision, issue JWT.
+  app.get('/api/v1/auth/oidc/callback', async (request, reply) => {
+    if (!oidcEnabled()) return reply.code(404).send({ error: 'SSO not enabled' });
+    const { code, state, error } = request.query;
+    const fail = (msg) => reply.redirect(`${config.publicUrl}/#sso_error=${encodeURIComponent(msg)}`);
+    if (error) return fail(String(error));
+    if (!code || !state) return fail('missing code/state');
+    try {
+      const claims = await handleCallback(String(code), String(state));
+      const user = provisionUser(claims);
+      const token = await reply.jwtSign(
+        { id: user.id, username: user.username, role: user.role },
+        { expiresIn: config.jwtExpiry }
+      );
+      record({ user: { id: user.id, username: user.username }, ip: request.ip }, 'login.sso', user.username);
+      return reply.redirect(`${config.publicUrl}/#sso=${token}`);
+    } catch (err) {
+      request.log.warn({ err: err.message, ip: request.ip }, 'SSO callback failed');
+      record({ ip: request.ip }, 'login.failed', 'sso', err.message);
+      return fail(err.message);
+    }
   });
 
   const pwSchema = z.object({

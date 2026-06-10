@@ -1,8 +1,22 @@
-import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo, downloadWithAuth } from '/js/api.js?v=1.6.0';
-import { suggestFix } from '/js/solutions.js?v=1.6.0';
+import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo, downloadWithAuth } from '/js/api.js?v=1.7.0';
+import { suggestFix } from '/js/solutions.js?v=1.7.0';
 
 const root = document.getElementById('root');
 let me = null;
+
+// SSO callback handoff: the OIDC callback redirects to /#sso=<jwt> (or
+// /#sso_error=...). Capture it before the router runs.
+let ssoError = null;
+(() => {
+  const h = location.hash || '';
+  if (h.startsWith('#sso=')) {
+    setToken(decodeURIComponent(h.slice(5)));
+    history.replaceState(null, '', location.pathname + '#/dashboard');
+  } else if (h.startsWith('#sso_error=')) {
+    ssoError = decodeURIComponent(h.slice(11));
+    history.replaceState(null, '', location.pathname + '#/login');
+  }
+})();
 
 // Connection keep-alive ----------------------------------------------------
 // The hosting network drops some brand-new TCP connections while established
@@ -92,11 +106,20 @@ function renderLogin() {
           <input name="username" placeholder="Username" autocomplete="username" autofocus required />
           <input name="password" type="password" placeholder="Password" autocomplete="current-password" required />
           <input name="totp" id="totpField" class="hidden" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit 2FA code" maxlength="6" />
-          <div class="error-msg" id="loginErr"></div>
+          <div class="error-msg" id="loginErr">${ssoError ? esc('SSO: ' + ssoError) : ''}</div>
           <button class="btn" type="submit">Sign in</button>
         </form>
+        <div id="ssoArea"></div>
       </div>
     </div>`;
+  ssoError = null;
+  api('/api/v1/auth/oidc/config', { auth: false }).then((c) => {
+    if (!c.enabled) return;
+    const area = document.getElementById('ssoArea');
+    if (!area) return;
+    area.innerHTML = `<div class="dim" style="text-align:center;margin:14px 0 8px">— or —</div>
+      <a class="btn secondary" style="width:100%;text-align:center;display:block" href="/api/v1/auth/oidc/start">🔐 ${esc(c.button_label || 'Sign in with SSO')}</a>`;
+  }).catch(() => {});
   document.getElementById('loginForm').onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

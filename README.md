@@ -42,7 +42,7 @@ pushed a Discord/Gotify/Telegram/email alert the moment something breaks.
 - ⚡ **Live log stream** over WebSocket (SSE fallback)
 - 🗄️ Historical storage with **configurable retention**
 - 👥 Roles (admin / operator / viewer), **API-key (token) management** per server
-- 🔒 **Two-factor authentication (TOTP)** + **security audit log** (CSV export)
+- 🔒 **Two-factor authentication (TOTP)** + **SSO (OpenID Connect)** + **security audit log** (CSV export)
 - 📈 **Dashboard charts** (24h volume + level breakdown), **CSV log export**
 - 📊 **Prometheus `/metrics`** endpoint, **one-click self-update**
 - 🌓 **Dark mode** (default) + light, fully **responsive**
