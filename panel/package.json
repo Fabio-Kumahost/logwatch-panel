@@ -24,7 +24,7 @@
     "zod": "^3.23.8"
   },
   "optionalDependencies": {
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^8.0.11",
     "@anthropic-ai/sdk": "^0.69.0"
   },
   "devDependencies": {
