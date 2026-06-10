@@ -23,6 +23,8 @@ import adminRoutes from './routes/admin.routes.js';
 import agentInstallRoutes from './routes/agent-install.routes.js';
 import streamRoutes from './routes/stream.routes.js';
 import systemRoutes from './routes/system.routes.js';
+import auditRoutes from './routes/audit.routes.js';
+import metricsRoutes from './routes/metrics.routes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = resolve(__dirname, '../public');
@@ -81,6 +83,8 @@ export async function buildApp() {
   await app.register(agentInstallRoutes);
   await app.register(streamRoutes);
   await app.register(systemRoutes);
+  await app.register(auditRoutes);
+  await app.register(metricsRoutes);
 
   // SPA fallback: serve index.html for non-API GET routes.
   app.setNotFoundHandler((request, reply) => {

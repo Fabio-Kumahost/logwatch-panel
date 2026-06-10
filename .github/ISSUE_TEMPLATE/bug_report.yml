@@ -1,0 +1,44 @@
+name: 🐛 Bug report
+description: Report a problem with the panel or agent
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to '...'
+        2. Click '...'
+        3. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options: [Panel (UI), Panel (API), Agent, Installer, Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Panel version (Settings → Software update) or agent version.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: "journalctl -u logwatch-panel  /  journalctl -u logwatch-agent"
+      render: shell
+  - type: input
+    id: os
+    attributes:
+      label: OS / distribution
+      placeholder: Ubuntu 24.04, Proxmox 8, Alpine 3.20, …

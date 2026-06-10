@@ -296,6 +296,107 @@ test('panel reports the distributed agent version', async () => {
   assert.match(res.json().version, /^\d+\.\d+\.\d+$/);
 });
 
+test('TOTP verify accepts the current code and rejects wrong ones', async () => {
+  const { generateSecret, verifyTOTP } = await import('../src/auth/totp.js');
+  const secret = generateSecret();
+  // Build the expected code via the same algorithm at a fixed time.
+  const now = 1700000000000;
+  let valid = null;
+  for (let c = 0; c < 1000000 && valid === null; c++) {
+    const code = String(c).padStart(6, '0');
+    if (verifyTOTP(secret, code, { now })) valid = code;
+  }
+  assert.ok(valid, 'should find the valid code');
+  assert.equal(verifyTOTP(secret, valid, { now }), true);
+  assert.equal(verifyTOTP(secret, '000000', { now: now + 10 * 60 * 1000 }) && valid === '000000', false);
+  assert.equal(verifyTOTP(secret, 'abcdef', { now }), false);
+});
+
+test('full 2FA lifecycle: setup, enable, login requires code, disable', async () => {
+  // setup
+  const setup = await app.inject({
+    method: 'POST', url: '/api/v1/auth/2fa/setup',
+    headers: { authorization: `Bearer ${userToken}` }, payload: {},
+  });
+  assert.equal(setup.statusCode, 200);
+  const secret = setup.json().secret;
+  assert.match(setup.json().otpauth_uri, /^otpauth:\/\/totp\//);
+
+  const { verifyTOTP } = await import('../src/auth/totp.js');
+  const code = () => { for (let c = 0; c < 1000000; c++) { const s = String(c).padStart(6, '0'); if (verifyTOTP(secret, s)) return s; } };
+
+  // enable
+  const en = await app.inject({
+    method: 'POST', url: '/api/v1/auth/2fa/enable',
+    headers: { authorization: `Bearer ${userToken}` }, payload: { totp: code() },
+  });
+  assert.equal(en.statusCode, 200);
+
+  // login without code now fails with totp_required
+  const noCode = await app.inject({
+    method: 'POST', url: '/api/v1/auth/login', payload: { username: 'admin', password: 'Sup3rSecret!' },
+  });
+  assert.equal(noCode.statusCode, 401);
+  assert.equal(noCode.json().error, 'totp_required');
+
+  // login WITH a valid code works
+  const withCode = await app.inject({
+    method: 'POST', url: '/api/v1/auth/login',
+    payload: { username: 'admin', password: 'Sup3rSecret!', totp: code() },
+  });
+  assert.equal(withCode.statusCode, 200);
+  assert.ok(withCode.json().token);
+
+  // disable (restores plain login for the rest of the suite)
+  const dis = await app.inject({
+    method: 'POST', url: '/api/v1/auth/2fa/disable',
+    headers: { authorization: `Bearer ${userToken}` }, payload: { totp: code() },
+  });
+  assert.equal(dis.statusCode, 200);
+  const plain = await app.inject({
+    method: 'POST', url: '/api/v1/auth/login', payload: { username: 'admin', password: 'Sup3rSecret!' },
+  });
+  assert.equal(plain.statusCode, 200);
+});
+
+test('audit log records security actions', async () => {
+  const res = await app.inject({
+    method: 'GET', url: '/api/v1/audit?limit=50',
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  assert.equal(res.statusCode, 200);
+  const actions = res.json().map((r) => r.action);
+  assert.ok(actions.includes('login.success'), 'expected a login.success audit entry');
+  assert.ok(actions.includes('server.created') || actions.includes('2fa.enabled'));
+});
+
+test('prometheus metrics endpoint exposes gauges', async () => {
+  const res = await app.inject({ method: 'GET', url: '/metrics' });
+  assert.equal(res.statusCode, 200);
+  assert.match(res.headers['content-type'], /text\/plain/);
+  assert.match(res.body, /logwatch_servers_total \d+/);
+  assert.match(res.body, /logwatch_logs_total \d+/);
+});
+
+test('CSV log export returns a downloadable file', async () => {
+  const res = await app.inject({
+    method: 'GET', url: '/api/v1/logs/export.csv',
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.match(res.headers['content-type'], /text\/csv/);
+  assert.match(res.body, /^time,server,source,service,level,message/);
+});
+
+test('24h timeseries returns 24 hourly buckets', async () => {
+  const res = await app.inject({
+    method: 'GET', url: '/api/v1/logs/timeseries',
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().series.length, 24);
+});
+
 test('agent install script is served publicly', async () => {
   const res = await app.inject({ method: 'GET', url: '/agent/install.sh' });
   assert.equal(res.statusCode, 200);

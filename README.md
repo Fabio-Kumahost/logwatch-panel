@@ -8,7 +8,14 @@ A self-hosted panel + a tiny Go agent. Install the panel with one command, conne
 any Linux server with another. See every log, search across the fleet, and get
 pushed a Discord/Gotify/Telegram/email alert the moment something breaks.
 
-[Features](#features) · [Quick start](#quick-start) · [Connect a server](#connect-a-server) · [Architecture](#architecture) · [Docs](#documentation)
+[![CI](https://github.com/Fabio-Kumahost/logwatch-panel/actions/workflows/ci.yml/badge.svg)](https://github.com/Fabio-Kumahost/logwatch-panel/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Fabio-Kumahost/logwatch-panel?sort=semver)](https://github.com/Fabio-Kumahost/logwatch-panel/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
+![Go](https://img.shields.io/badge/agent-Go%20stdlib-00ADD8?logo=go&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-26%20passing-2ea043)
+
+[Features](#features) · [Quick start](#quick-start) · [Docker](#run-with-docker) · [Connect a server](#connect-a-server) · [Architecture](#architecture) · [Docs](#documentation)
 
 </div>
 
@@ -35,6 +42,9 @@ pushed a Discord/Gotify/Telegram/email alert the moment something breaks.
 - ⚡ **Live log stream** over WebSocket (SSE fallback)
 - 🗄️ Historical storage with **configurable retention**
 - 👥 Roles (admin / operator / viewer), **API-key (token) management** per server
+- 🔒 **Two-factor authentication (TOTP)** + **security audit log** (CSV export)
+- 📈 **Dashboard charts** (24h volume + level breakdown), **CSV log export**
+- 📊 **Prometheus `/metrics`** endpoint, **one-click self-update**
 - 🌓 **Dark mode** (default) + light, fully **responsive**
 
 **Agent** (single static Go binary, ~6 MB, low CPU/RAM)
@@ -107,6 +117,20 @@ LW_NONINTERACTIVE=1 LW_DOMAIN=panel.example.com LW_SSL=y LW_SSL_EMAIL=me@example
 LW_ADMIN_USER=admin LW_ADMIN_PASS='ChangeMe123!' \
 bash <(curl -sSL https://raw.githubusercontent.com/Fabio-Kumahost/logwatch-panel/main/install.sh)
 ```
+
+## Run with Docker
+
+```bash
+git clone https://github.com/Fabio-Kumahost/logwatch-panel.git
+cd logwatch-panel
+cp .env.example .env       # set JWT_SECRET (openssl rand -hex 48) and ADMIN_PASS
+docker compose up -d --build
+# → http://localhost:8088
+```
+
+The database persists in the `logwatch-data` volume. Put your own reverse proxy /
+TLS in front for production, and set `PUBLIC_URL` so agent install one-liners use
+the right address.
 
 ## Connect a server
 

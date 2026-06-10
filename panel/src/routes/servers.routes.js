@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { config } from '../config.js';
 import { generateAgentToken, hashToken } from '../auth/auth.js';
 import { requireUser, requireRole } from '../auth/middleware.js';
+import { record } from '../services/audit.js';
 
 function installCommand(token) {
   return `curl -sSL ${config.publicUrl}/agent/install.sh | sudo bash -s -- --panel ${config.publicUrl} --token ${token}`;
@@ -47,6 +48,7 @@ export default async function serverRoutes(app) {
     const info = db
       .prepare('INSERT INTO servers(name, token_hash, group_name) VALUES(?,?,?)')
       .run(parsed.data.name, hashToken(token), parsed.data.group_name || 'default');
+    record(request, 'server.created', parsed.data.name);
     return reply.code(201).send({
       id: info.lastInsertRowid,
       name: parsed.data.name,
@@ -83,7 +85,7 @@ export default async function serverRoutes(app) {
 
   const deleteServer = async (request, reply) => {
     const id = Number(request.params.id);
-    const s = db.prepare('SELECT id FROM servers WHERE id = ?').get(id);
+    const s = db.prepare('SELECT id, name FROM servers WHERE id = ?').get(id);
     if (!s) return reply.code(404).send({ error: 'not found' });
 
     // A server can own hundreds of thousands of log rows. Letting the FK
@@ -97,6 +99,7 @@ export default async function serverRoutes(app) {
     db.prepare('DELETE FROM alert_events WHERE server_id = ?').run(id);
     db.prepare('DELETE FROM rules WHERE server_id = ?').run(id);
 
+    record(request, 'server.deleted', s.name || `#${id}`);
     purgeServerLogs(id, request.log);
     return { ok: true };
   };

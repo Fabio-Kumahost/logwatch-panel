@@ -1,5 +1,5 @@
-import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo } from '/js/api.js?v=1.3.1';
-import { suggestFix } from '/js/solutions.js?v=1.3.1';
+import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo, downloadWithAuth } from '/js/api.js?v=1.4.0';
+import { suggestFix } from '/js/solutions.js?v=1.4.0';
 
 const root = document.getElementById('root');
 let me = null;
@@ -88,6 +88,7 @@ function renderLogin() {
         <form id="loginForm">
           <input name="username" placeholder="Username" autocomplete="username" autofocus required />
           <input name="password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <input name="totp" id="totpField" class="hidden" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit 2FA code" maxlength="6" />
           <div class="error-msg" id="loginErr"></div>
           <button class="btn" type="submit">Sign in</button>
         </form>
@@ -96,11 +97,20 @@ function renderLogin() {
   document.getElementById('loginForm').onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
+    const body = { username: f.get('username'), password: f.get('password') };
+    const totp = (f.get('totp') || '').trim();
+    if (totp) body.totp = totp;
     try {
-      const res = await api('/api/v1/auth/login', { method: 'POST', auth: false, body: { username: f.get('username'), password: f.get('password') } });
+      const res = await api('/api/v1/auth/login', { method: 'POST', auth: false, body });
       setToken(res.token); me = res.user;
       location.hash = '#/dashboard';
     } catch (err) {
+      if (err.message === 'totp_required') {
+        document.getElementById('totpField').classList.remove('hidden');
+        document.getElementById('totpField').focus();
+        document.getElementById('loginErr').textContent = 'Enter your 2FA code to continue.';
+        return;
+      }
       document.getElementById('loginErr').textContent = err.message;
     }
   };
@@ -111,10 +121,11 @@ async function renderDashboard() {
   shell('/dashboard', `<div id="updateBanner"></div><div class="page-head"><h2>Dashboard</h2></div><div id="dash">Loading…</div>`);
   renderUpdateBanner();
   try {
-    const [servers, stats, agentVer] = await Promise.all([
+    const [servers, stats, agentVer, ts] = await Promise.all([
       api('/api/v1/servers'),
       api('/api/v1/logs/stats'),
       api('/api/v1/agent/version').catch(() => null),
+      api('/api/v1/logs/timeseries').catch(() => ({ series: [] })),
     ]);
     window._agentLatest = agentVer?.version || null;
     const online = servers.filter((s) => s.status === 'online').length;
@@ -129,10 +140,50 @@ async function renderDashboard() {
         <div class="stat"><div class="n" style="color:var(--orange)">${byLevel.error || 0}</div><div class="l">Errors (24h)</div></div>
         <div class="stat"><div class="n" style="color:var(--red)">${byLevel.critical || 0}</div><div class="l">Critical (24h)</div></div>
       </div>
-      <div class="page-head"><h2>Servers</h2><div class="spacer"></div><button class="btn" id="addServer">+ Add server</button></div>
+      <div class="cards" style="grid-template-columns:2fr 1fr">
+        <div class="card"><div class="l dim" style="margin-bottom:8px">LOG VOLUME · LAST 24H</div>${volumeChart(ts.series || [])}</div>
+        <div class="card"><div class="l dim" style="margin-bottom:8px">BY LEVEL · 24H</div>${levelChart(byLevel)}</div>
+      </div>
+      <div class="page-head" style="margin-top:22px"><h2>Servers</h2><div class="spacer"></div><button class="btn" id="addServer">+ Add server</button></div>
       <div class="cards">${servers.map(serverCard).join('') || '<div class="dim">No servers yet. Click “Add server”.</div>'}</div>`;
     document.getElementById('addServer').onclick = addServerModal;
   } catch (err) { toast(err.message, 'error'); }
+}
+
+// --- Tiny dependency-free SVG charts ---
+function volumeChart(series) {
+  if (!series.length) return '<div class="dim">No data yet.</div>';
+  const W = 560, H = 120, pad = 4;
+  const max = Math.max(1, ...series.map((s) => s.total));
+  const bw = (W - pad * 2) / series.length;
+  const bars = series.map((s, i) => {
+    const x = pad + i * bw;
+    const th = ((s.total / max) * (H - 20));
+    const eh = ((s.errors / max) * (H - 20));
+    const t = new Date(s.hour * 1000).getHours();
+    return `<g>
+      <rect x="${x + 1}" y="${H - 16 - th}" width="${bw - 2}" height="${th}" fill="var(--accent)" opacity="0.55" rx="2">
+        <title>${t}:00 — ${s.total} logs, ${s.errors} errors</title></rect>
+      <rect x="${x + 1}" y="${H - 16 - eh}" width="${bw - 2}" height="${eh}" fill="var(--red)" rx="2"></rect>
+    </g>`;
+  }).join('');
+  const labels = series.map((s, i) => (i % 4 === 0 ? `<text x="${pad + i * bw + 2}" y="${H - 3}" font-size="9" fill="var(--text-dim)">${new Date(s.hour * 1000).getHours()}h</text>` : '')).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none" style="display:block">${bars}${labels}</svg>
+    <div class="dim" style="font-size:11px;margin-top:4px"><span style="color:var(--accent)">▮</span> total · <span style="color:var(--red)">▮</span> errors</div>`;
+}
+
+function levelChart(byLevel) {
+  const order = ['critical', 'error', 'warning', 'notice', 'info', 'debug'];
+  const total = order.reduce((a, l) => a + (byLevel[l] || 0), 0) || 1;
+  return order.map((l) => {
+    const n = byLevel[l] || 0;
+    const pct = Math.round((n / total) * 100);
+    return `<div style="margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span class="badge lvl-${l}">${l}</span><span class="dim">${n}</span></div>
+      <div style="height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:3px">
+        <div style="height:100%;width:${pct}%;background:var(--accent)"></div></div>
+    </div>`;
+  }).join('');
 }
 
 async function renderUpdateBanner() {
@@ -302,6 +353,7 @@ async function renderLogs() {
         <option value="asc">Oldest first</option>
       </select>
       <button class="btn" id="searchBtn">Search</button>
+      <button class="btn secondary" id="exportBtn">⭳ CSV</button>
     </div>
     <div class="log-list" id="logList"><div style="padding:14px" class="dim">Loading…</div></div>`);
 
@@ -324,6 +376,12 @@ async function renderLogs() {
   sel('searchBtn').onclick = doSearch;
   sel('sortDir').onchange = doSearch;
   sel('q').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+  sel('exportBtn').onclick = () => {
+    const params = new URLSearchParams();
+    for (const k of ['q', 'server_id', 'level', 'source']) { const v = sel(k).value.trim(); if (v) params.set(k, v); }
+    params.set('sort', sel('sortDir').value);
+    downloadWithAuth(`/api/v1/logs/export.csv?${params}`, 'logwatch-logs.csv');
+  };
 
   // Click a row to open the detail view with a suggested fix.
   document.getElementById('logList').addEventListener('click', (e) => {
@@ -564,6 +622,21 @@ async function renderSettings() {
         <button class="btn sm" id="savePw">Update password</button>
       </div>
     </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3>Two-factor authentication (2FA)</h3>
+      <div id="twofa">
+        ${me.totp_enabled
+          ? `<div>Status: <b style="color:var(--green)">enabled</b> ✅</div>
+             <div class="row" style="margin-top:8px"><input id="disCode" inputmode="numeric" maxlength="6" placeholder="current 6-digit code" style="width:180px" />
+             <button class="btn danger sm" id="disable2fa">Disable 2FA</button></div>`
+          : `<div class="dim">Add a second factor (Google Authenticator, Aegis, 1Password, …) to protect your account.</div>
+             <button class="btn sm" id="setup2fa" style="margin-top:8px">Set up 2FA</button>`}
+      </div>
+    </div>
+    ${isAdmin ? `<div class="card" style="margin-bottom:16px">
+      <h3>Audit log <button class="btn secondary sm" id="auditCsv" style="float:right">⭳ CSV</button></h3>
+      <div id="auditBox" class="dim">Loading…</div>
+    </div>` : ''}
     ${isAdmin ? `<div class="card">
       <h3>Users</h3>
       <table class="grid"><tr><th>User</th><th>Role</th><th>Last login</th><th></th></tr>
@@ -599,6 +672,27 @@ async function renderSettings() {
       toast('Password updated', 'success'); document.getElementById('curPw').value = ''; document.getElementById('newPw').value = '';
     } catch (err) { toast(err.message, 'error'); }
   };
+
+  // 2FA
+  document.getElementById('setup2fa')?.addEventListener('click', twoFactorSetupModal);
+  document.getElementById('disable2fa')?.addEventListener('click', async () => {
+    try {
+      await api('/api/v1/auth/2fa/disable', { method: 'POST', body: { totp: document.getElementById('disCode').value.trim() } });
+      toast('2FA disabled', 'success'); me.totp_enabled = false; renderSettings();
+    } catch (err) { toast(err.message, 'error'); }
+  });
+
+  // Audit log (admin)
+  if (isAdmin) {
+    document.getElementById('auditCsv').onclick = () => downloadWithAuth('/api/v1/audit/export.csv', 'logwatch-audit.csv');
+    api('/api/v1/audit?limit=100').then((rows) => {
+      const box = document.getElementById('auditBox');
+      box.innerHTML = rows.length ? `<table class="grid"><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>IP</th></tr>${rows.map((r) => `
+        <tr><td>${fmtTime(r.ts)}</td><td>${esc(r.username || '—')}</td>
+        <td><span class="mono">${esc(r.action)}</span></td><td>${esc(r.target || '')}${r.detail ? ` <span class="dim">${esc(r.detail)}</span>` : ''}</td>
+        <td class="mono">${esc(r.ip || '')}</td></tr>`).join('')}</table>` : '<div class="dim">No audit entries yet.</div>';
+    }).catch((e) => { document.getElementById('auditBox').textContent = e.message; });
+  }
   if (isAdmin) {
     document.getElementById('addUser').onclick = async () => {
       try {
@@ -607,6 +701,31 @@ async function renderSettings() {
       } catch (err) { toast(err.message, 'error'); }
     };
   }
+}
+
+// 2FA setup wizard ---------------------------------------------------------
+async function twoFactorSetupModal() {
+  let data;
+  try { data = await api('/api/v1/auth/2fa/setup', { method: 'POST', body: {} }); }
+  catch (err) { return toast(err.message, 'error'); }
+  // QR via a public chart endpoint is avoided for privacy; show secret + URI.
+  modal(`<h3>Set up two-factor authentication</h3>
+    <ol style="padding-left:18px">
+      <li>Open your authenticator app (Google Authenticator, Aegis, 1Password…).</li>
+      <li>Add an account → "enter a setup key" and paste:</li>
+    </ol>
+    <div class="code-box" style="margin:8px 0">${esc(data.secret)}</div>
+    <div class="dim" style="font-size:12px;word-break:break-all">otpauth URI: ${esc(data.otpauth_uri)}</div>
+    <div class="form-grid" style="margin-top:12px;max-width:240px">
+      <input id="enCode" inputmode="numeric" maxlength="6" placeholder="6-digit code from app" />
+      <div class="row"><button class="btn" id="enable2fa">Enable</button><button class="btn secondary" onclick="LW.closeModal()">Cancel</button></div>
+    </div>`);
+  document.getElementById('enable2fa').onclick = async () => {
+    try {
+      await api('/api/v1/auth/2fa/enable', { method: 'POST', body: { totp: document.getElementById('enCode').value.trim() } });
+      closeModal(); toast('2FA enabled', 'success'); me.totp_enabled = true; renderSettings();
+    } catch (err) { toast(err.message, 'error'); }
+  };
 }
 
 // Modal helpers -----------------------------------------------------------

@@ -1,0 +1,12 @@
+**/node_modules
+panel/data
+*.db
+*.db-wal
+*.db-shm
+.git
+.github
+agent
+docs/screenshots
+.claude
+.claude-flow
+.env

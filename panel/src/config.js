@@ -75,4 +75,6 @@ export const config = {
   agentBinDir: process.env.AGENT_BIN_DIR || '../agent-bin',
   trustProxy: bool('TRUST_PROXY', false),
   isProd: process.env.NODE_ENV === 'production',
+  // Optional bearer token protecting GET /metrics (Prometheus). Unset = open.
+  metricsToken: process.env.METRICS_TOKEN || '',
 };

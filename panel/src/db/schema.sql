@@ -111,3 +111,16 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- Security audit trail: who did what, from where.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  user_id   INTEGER,
+  username  TEXT,
+  action    TEXT NOT NULL,
+  target    TEXT,
+  detail    TEXT,
+  ip        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);

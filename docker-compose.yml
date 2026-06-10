@@ -1,0 +1,25 @@
+# LogWatch Panel via Docker Compose.
+#   1. cp .env.example .env  and fill in JWT_SECRET / ADMIN_PASS
+#   2. docker compose up -d --build
+#   3. open http://localhost:8088
+services:
+  panel:
+    build: .
+    image: logwatch-panel:latest
+    container_name: logwatch-panel
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8088}:8088"
+    environment:
+      PUBLIC_URL: "${PUBLIC_URL:-http://localhost:8088}"
+      JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env (openssl rand -hex 48)}"
+      ADMIN_USER: "${ADMIN_USER:-admin}"
+      ADMIN_PASS: "${ADMIN_PASS:?set ADMIN_PASS in .env}"
+      RETENTION_DAYS: "${RETENTION_DAYS:-14}"
+      TRUST_PROXY: "true"
+      METRICS_TOKEN: "${METRICS_TOKEN:-}"
+    volumes:
+      - logwatch-data:/data
+
+volumes:
+  logwatch-data:

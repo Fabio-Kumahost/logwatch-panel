@@ -47,6 +47,22 @@ export function toast(msg, type = 'info') {
   setTimeout(() => el.remove(), 4000);
 }
 
+// Download an authenticated endpoint (can't use a plain <a> — needs the JWT).
+export async function downloadWithAuth(path, filename) {
+  try {
+    const res = await fetch(path, { headers: { authorization: `Bearer ${getToken()}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    toast(`Export failed: ${err.message}`, 'error');
+  }
+}
+
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]

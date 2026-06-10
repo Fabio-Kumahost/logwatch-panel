@@ -121,6 +121,21 @@ Emits one JSON log entry per message.
 - `GET/POST/DELETE /api/v1/users` *(admin)* — roles: `admin`, `operator`, `viewer`.
 - `GET/PUT /api/v1/settings` — `retention_days`, `alert_channel_id` (for system alerts).
 
+## Two-factor auth (TOTP)
+- `POST /api/v1/auth/2fa/setup` → `{ secret, otpauth_uri }` (not yet active).
+- `POST /api/v1/auth/2fa/enable` `{ totp }` → activates after verifying the code.
+- `POST /api/v1/auth/2fa/disable` `{ totp }` → requires a valid current code.
+- When 2FA is enabled, `POST /auth/login` returns `401 {"error":"totp_required"}`
+  until a valid `totp` is included in the body.
+
+## Audit & observability
+- `GET /api/v1/audit?limit=` *(admin)* — security audit trail.
+- `GET /api/v1/audit/export.csv` *(admin)* — audit trail as CSV.
+- `GET /api/v1/logs/export.csv?…` — current log filter as CSV (same query params as `/logs`).
+- `GET /api/v1/logs/timeseries` — 24 hourly buckets `{ hour, total, errors }` for charts.
+- `GET /metrics` — Prometheus exposition. If `METRICS_TOKEN` is set, requires
+  `Authorization: Bearer <token>`.
+
 ## System / updates
 
 - `GET /api/v1/system/update` → `{ current, latest, update_available, checked_at, error, update_command }`
