@@ -183,6 +183,11 @@ setup_nginx() {
   local server_name="${CFG_DOMAIN:-_}"
   local conf="/etc/nginx/sites-available/logwatch-panel.conf"
   [ -d /etc/nginx/sites-available ] || conf="/etc/nginx/conf.d/logwatch-panel.conf"
+
+  # Idempotent: remove any leftover logwatch configs (incl. a previous certbot
+  # SSL/redirect config) so a re-install cleanly returns to plain HTTP on the IP.
+  rm -f /etc/nginx/sites-enabled/logwatch-panel*.conf /etc/nginx/conf.d/logwatch-panel*.conf 2>/dev/null || true
+
   sed -e "s/__DOMAIN__/${server_name}/g" -e "s/__PORT__/${PORT}/g" \
     "${INSTALL_DIR}/deploy/nginx/logwatch-panel.conf.template" > "$conf"
   if [ -d /etc/nginx/sites-enabled ]; then
@@ -190,7 +195,22 @@ setup_nginx() {
     rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
   fi
   nginx -t >/dev/null 2>&1 && systemctl restart nginx 2>/dev/null && systemctl enable nginx >/dev/null 2>&1 \
-    && ok "nginx reverse proxy configured" || warn "nginx config test failed; review ${conf}"
+    && ok "nginx serving the panel on port 80${CFG_DOMAIN:+ (server_name ${CFG_DOMAIN})}" \
+    || warn "nginx config test failed; review ${conf}"
+}
+
+# Open the firewall for HTTP/HTTPS so the panel is reachable (best effort).
+open_firewall() {
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw allow 80,443/tcp >/dev/null 2>&1 || ufw allow 80/tcp >/dev/null 2>&1 || true
+    ok "ufw: opened ports 80/443"
+  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --add-service=http --add-service=https --permanent >/dev/null 2>&1 || true
+    firewall-cmd --reload >/dev/null 2>&1 || true
+    ok "firewalld: opened http/https"
+  else
+    log "no active host firewall detected (nothing to open)."
+  fi
 }
 
 setup_ssl() {
@@ -215,6 +235,27 @@ setup_ssl() {
   fi
 }
 
+# Verify the panel is reachable locally (and externally on the IP if possible).
+verify_reachable() {
+  local local_code
+  local_code="$(curl -s -o /dev/null -w '%{http_code}' -m5 http://127.0.0.1/api/v1/health 2>/dev/null || echo 000)"
+  if [ "$local_code" = "200" ]; then
+    ok "panel reachable through nginx on port 80 (HTTP ${local_code})"
+  else
+    warn "nginx -> panel check returned HTTP ${local_code}; check: journalctl -u logwatch-panel -u nginx"
+  fi
+  if [ -z "${CFG_DOMAIN:-}" ] && [ -n "${CFG_SERVER_IP:-}" ]; then
+    local ext
+    ext="$(curl -s -o /dev/null -w '%{http_code}' -m6 "http://${CFG_SERVER_IP}/api/v1/health" 2>/dev/null || echo 000)"
+    if [ "$ext" = "200" ]; then
+      ok "panel reachable via public IP http://${CFG_SERVER_IP}"
+    else
+      warn "could not reach http://${CFG_SERVER_IP} from the server itself (HTTP ${ext})."
+      warn "If the browser also can't reach it, your provider blocks inbound 80 to this IP — open a ticket or use a domain."
+    fi
+  fi
+}
+
 summary() {
   echo
   echo "==================================================================="
@@ -228,9 +269,15 @@ summary() {
   echo "  Logs:      journalctl -u logwatch-panel -f"
   echo "  Restart:   systemctl restart logwatch-panel"
   echo
-  echo "  Firewall: allow inbound 80/443 (HTTP/HTTPS), e.g.:"
-  echo "     ufw allow 80,443/tcp        # Debian/Ubuntu"
-  echo "     firewall-cmd --add-service={http,https} --permanent && firewall-cmd --reload"
+  if [ -z "${CFG_DOMAIN:-}" ]; then
+    echo "  Access mode: DIRECT IP over HTTP (no domain). Open in your browser:"
+    echo "     ${CFG_PUBLIC_URL}"
+    echo "  The host firewall was opened automatically. If your VPS provider has an"
+    echo "  external firewall/anti-DDoS, allow inbound TCP 80 to ${CFG_SERVER_IP}."
+  else
+    echo "  Firewall opened automatically for 80/443. If using an external"
+    echo "  provider firewall, allow inbound 80/443 to this host."
+  fi
   echo
   echo "  Add a server: open the panel, click 'Add server', and run the"
   echo "  generated one-liner on the target host. It looks like:"
@@ -248,7 +295,9 @@ main() {
   configure
   install_service
   setup_nginx
+  open_firewall
   setup_ssl
+  verify_reachable
   summary
 }
 
