@@ -70,11 +70,27 @@ Fedora · Arch Linux · openSUSE · Alpine Linux
 
 ## Quick start
 
+> **This repository is private.** GitHub's `raw.githubusercontent.com` and `git clone`
+> require authentication for private repos, so the bare one-liner below returns 404
+> until you either make the repo public **or** pass a GitHub read token (next section).
+
 Install the panel on a Debian/Ubuntu VPS (other distros are auto-detected too):
 
 ```bash
+# Works once the repository is PUBLIC:
 bash <(curl -sSL https://raw.githubusercontent.com/Fabio-Kumahost/logwatch-panel/main/install.sh)
 ```
+
+### Installing from a private repo (with a token)
+Create a GitHub token with read access to this repo, then:
+```bash
+curl -fsSL -H "Authorization: token $GH_TOKEN" \
+  https://raw.githubusercontent.com/Fabio-Kumahost/logwatch-panel/main/install.sh \
+  | sudo LW_GH_TOKEN="$GH_TOKEN" bash
+```
+The token is used only to clone the repo and is never written to disk (the stored
+git remote is rewritten without it). The **agent** one-liner is unaffected by repo
+visibility — it is served by your panel over its own HTTPS, not from GitHub.
 
 The installer will:
 1. Detect your OS and install dependencies (Node.js 20, Nginx, build tools)

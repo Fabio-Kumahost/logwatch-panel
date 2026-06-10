@@ -3,9 +3,14 @@
 #
 #   bash <(curl -sSL https://raw.githubusercontent.com/Fabio-Kumahost/logwatch-panel/main/install.sh)
 #
+# PRIVATE repository? Pass a GitHub read token so the installer can clone:
+#   curl -fsSL -H "Authorization: token <GH_TOKEN>" \
+#     https://raw.githubusercontent.com/Fabio-Kumahost/logwatch-panel/main/install.sh \
+#     | sudo LW_GH_TOKEN=<GH_TOKEN> bash
+#
 # Non-interactive overrides (env vars):
 #   LW_NONINTERACTIVE=1  LW_DOMAIN=panel.example.com  LW_SSL_EMAIL=me@x.com
-#   LW_ADMIN_USER=admin  LW_ADMIN_PASS=secret  LW_PORT=8088
+#   LW_ADMIN_USER=admin  LW_ADMIN_PASS=secret  LW_PORT=8088  LW_GH_TOKEN=<token>
 set -euo pipefail
 
 REPO="https://github.com/Fabio-Kumahost/logwatch-panel.git"
@@ -76,15 +81,23 @@ install_node() {
 }
 
 fetch_source() {
+  # For a PRIVATE repository, export LW_GH_TOKEN with a GitHub token that has
+  # read access; it is injected into the clone URL and never written to disk.
+  local clone_url="$REPO"
+  if [ -n "${LW_GH_TOKEN:-}" ]; then
+    clone_url="https://x-access-token:${LW_GH_TOKEN}@github.com/Fabio-Kumahost/logwatch-panel.git"
+  fi
   if [ -d "${INSTALL_DIR}/.git" ]; then
     log "updating existing checkout..."
     git -C "$INSTALL_DIR" fetch --depth 1 origin "$BRANCH" >/dev/null 2>&1
     git -C "$INSTALL_DIR" reset --hard "origin/${BRANCH}" >/dev/null 2>&1
   else
-    log "cloning ${REPO}..."
+    log "cloning repository..."
     rm -rf "$INSTALL_DIR"
-    git clone --depth 1 --branch "$BRANCH" "$REPO" "$INSTALL_DIR" >/dev/null 2>&1 \
-      || die "git clone failed (is the repository public and the branch '$BRANCH' present?)"
+    git clone --depth 1 --branch "$BRANCH" "$clone_url" "$INSTALL_DIR" >/dev/null 2>&1 \
+      || die "git clone failed. Private repo? set LW_GH_TOKEN=<github token>. Also check the branch '$BRANCH' exists."
+    # Make sure the stored remote has no embedded token.
+    git -C "$INSTALL_DIR" remote set-url origin "$REPO" >/dev/null 2>&1 || true
   fi
   log "installing panel dependencies (this can take a minute)..."
   ( cd "${INSTALL_DIR}/panel" && npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1 ) \
