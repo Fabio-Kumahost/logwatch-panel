@@ -7,7 +7,15 @@ import { existsSync, readFileSync } from 'node:fs';
 // Lightweight .env loader (no external dependency). Reads KEY=VALUE lines.
 function loadEnvFile(path) {
   if (!path || !existsSync(path)) return;
-  const text = readFileSync(path, 'utf8');
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (err) {
+    // Under systemd the EnvironmentFile already injected these vars, so a direct
+    // read failure (e.g. permissions) is non-fatal — warn and continue.
+    console.warn(`[config] could not read ${path}: ${err.code || err.message} — relying on process environment.`);
+    return;
+  }
   for (const rawLine of text.split('\n')) {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;

@@ -148,6 +148,9 @@ AGENT_BIN_DIR=../agent-bin
 RETENTION_DAYS=14
 TRUST_PROXY=true
 EOF
+  # The service runs as $PANEL_USER, so it must own and be able to read the
+  # config (which holds JWT_SECRET). Keep it readable only by that user.
+  chown -R "$PANEL_USER":"$PANEL_USER" "$CONF_DIR"
   chmod 600 "$CONF_FILE"
 
   log "initializing database and admin account..."
