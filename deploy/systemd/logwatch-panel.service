@@ -1,0 +1,29 @@
+[Unit]
+Description=LogWatch Panel
+Documentation=https://github.com/fabioagostinho/logwatch-panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=logwatch-panel
+Group=logwatch-panel
+WorkingDirectory=/opt/logwatch-panel/panel
+EnvironmentFile=/etc/logwatch-panel/config.env
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/logwatch-panel/panel/data
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

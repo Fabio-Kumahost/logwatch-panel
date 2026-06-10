@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  panel:
+    name: Panel tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        working-directory: panel
+        run: npm install --no-audit --no-fund
+      - name: Run tests
+        working-directory: panel
+        run: npm test
+
+  agent:
+    name: Agent build & vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: go vet
+        working-directory: agent
+        run: GOOS=linux go vet ./...
+      - name: Cross-compile all arches
+        run: make agent-all

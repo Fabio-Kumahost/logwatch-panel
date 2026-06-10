@@ -1,0 +1,31 @@
+[Unit]
+Description=LogWatch Agent
+Documentation=https://github.com/fabioagostinho/logwatch-panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# User/Group are set by the installer (logwatch or root for full log access).
+User=logwatch
+Group=logwatch
+ExecStart=/usr/local/bin/logwatch-agent --config /etc/logwatch-agent/config.json
+Restart=always
+RestartSec=5
+# Hardening: the agent only reads logs and reaches the network.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/logwatch-agent
+ReadOnlyPaths=/var/log
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryMax=128M
+CPUQuota=20%
+
+[Install]
+WantedBy=multi-user.target
