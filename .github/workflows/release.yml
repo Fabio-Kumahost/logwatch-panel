@@ -19,7 +19,7 @@ jobs:
       - name: Build agent binaries
         run: make agent-all VERSION="${GITHUB_REF_NAME#v}"
       - name: Create / update GitHub Release with binaries
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: agent-bin/logwatch-agent-linux-*
           generate_release_notes: true
