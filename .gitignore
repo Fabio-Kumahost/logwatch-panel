@@ -24,3 +24,4 @@ agent/logwatch-agent
 # Ruflo / claude-flow local state
 .claude-flow/
 .swarm/
+/.claude/
