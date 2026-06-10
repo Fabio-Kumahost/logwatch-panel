@@ -81,7 +81,7 @@ export default async function serverRoutes(app) {
     return { token, install_command: installCommand(token) };
   });
 
-  app.delete('/api/v1/servers/:id', { preHandler: requireRole('operator') }, async (request, reply) => {
+  const deleteServer = async (request, reply) => {
     const id = Number(request.params.id);
     const s = db.prepare('SELECT id FROM servers WHERE id = ?').get(id);
     if (!s) return reply.code(404).send({ error: 'not found' });
@@ -99,7 +99,11 @@ export default async function serverRoutes(app) {
 
     purgeServerLogs(id, request.log);
     return { ok: true };
-  });
+  };
+  app.delete('/api/v1/servers/:id', { preHandler: requireRole('operator') }, deleteServer);
+  // POST alias: some hosting firewalls/WAFs silently drop DELETE requests,
+  // which surfaces in the browser as "Failed to fetch". POST always passes.
+  app.post('/api/v1/servers/:id/delete', { preHandler: requireRole('operator') }, deleteServer);
 }
 
 // Deletes a removed server's logs in chunks without blocking the event loop.

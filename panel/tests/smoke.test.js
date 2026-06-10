@@ -243,6 +243,26 @@ test('POST with JSON content-type and empty body does not 400 (browser behavior)
   assert.match(res.json().token, /^[a-f0-9]{64}$/);
 });
 
+test('POST /delete alias removes a server (firewalls may drop DELETE)', async () => {
+  const create = await app.inject({
+    method: 'POST',
+    url: '/api/v1/servers',
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: { name: 'alias-del' },
+  });
+  const { id } = create.json();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/api/v1/servers/${id}/delete`,
+    headers: { authorization: `Bearer ${userToken}`, 'content-type': 'application/json' },
+  });
+  assert.equal(res.statusCode, 200);
+  const list = await app.inject({
+    method: 'GET', url: '/api/v1/servers', headers: { authorization: `Bearer ${userToken}` },
+  });
+  assert.ok(!list.json().some((s) => s.id === id));
+});
+
 test('agent install script is served publicly', async () => {
   const res = await app.inject({ method: 'GET', url: '/agent/install.sh' });
   assert.equal(res.statusCode, 200);

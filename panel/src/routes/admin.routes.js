@@ -27,7 +27,7 @@ export default async function adminRoutes(app) {
     return reply.code(201).send({ id: info.lastInsertRowid });
   });
 
-  app.delete('/api/v1/users/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
+  const deleteUser = async (request, reply) => {
     if (Number(request.params.id) === request.user.id) {
       return reply.code(400).send({ error: 'cannot delete yourself' });
     }
@@ -36,7 +36,9 @@ export default async function adminRoutes(app) {
     const info = db.prepare('DELETE FROM users WHERE id = ?').run(request.params.id);
     if (info.changes === 0) return reply.code(404).send({ error: 'not found' });
     return { ok: true };
-  });
+  };
+  app.delete('/api/v1/users/:id', { preHandler: requireRole('admin') }, deleteUser);
+  app.post('/api/v1/users/:id/delete', { preHandler: requireRole('admin') }, deleteUser);
 
   // ---- Settings ----
   app.get('/api/v1/settings', { preHandler: requireUser }, async () => ({

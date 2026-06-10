@@ -62,12 +62,15 @@ export default async function alertRoutes(app) {
     return { ok: true };
   });
 
-  app.delete('/api/v1/channels/:id', { preHandler: requireRole('operator') }, async (request, reply) => {
+  const deleteChannel = async (request, reply) => {
     const info = db.prepare('DELETE FROM channels WHERE id=?').run(request.params.id);
     if (info.changes === 0) return reply.code(404).send({ error: 'not found' });
     reloadRules();
     return { ok: true };
-  });
+  };
+  app.delete('/api/v1/channels/:id', { preHandler: requireRole('operator') }, deleteChannel);
+  // POST alias — some firewalls drop DELETE requests entirely.
+  app.post('/api/v1/channels/:id/delete', { preHandler: requireRole('operator') }, deleteChannel);
 
   // Send a test notification through a stored channel.
   app.post('/api/v1/channels/:id/test', { preHandler: requireRole('operator') }, async (request, reply) => {
@@ -146,12 +149,14 @@ export default async function alertRoutes(app) {
     return { ok: true };
   });
 
-  app.delete('/api/v1/rules/:id', { preHandler: requireRole('operator') }, async (request, reply) => {
+  const deleteRule = async (request, reply) => {
     const info = db.prepare('DELETE FROM rules WHERE id=?').run(request.params.id);
     if (info.changes === 0) return reply.code(404).send({ error: 'not found' });
     reloadRules();
     return { ok: true };
-  });
+  };
+  app.delete('/api/v1/rules/:id', { preHandler: requireRole('operator') }, deleteRule);
+  app.post('/api/v1/rules/:id/delete', { preHandler: requireRole('operator') }, deleteRule);
 
   // ---- Alert event history ----
   app.get('/api/v1/alerts/events', { preHandler: requireUser }, async (request) => {

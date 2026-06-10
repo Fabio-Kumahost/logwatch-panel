@@ -57,7 +57,17 @@ export async function buildApp() {
     timeWindow: '1 minute',
   });
   await app.register(fastifyWebsocket);
-  await app.register(fastifyStatic, { root: publicDir, prefix: '/' });
+  await app.register(fastifyStatic, {
+    root: publicDir,
+    prefix: '/',
+    setHeaders(res, filePath) {
+      // HTML must always be revalidated so users get new (version-tagged)
+      // asset URLs right after a panel update; assets themselves may cache.
+      if (filePath.endsWith('.html')) {
+        res.setHeader('cache-control', 'no-cache');
+      }
+    },
+  });
 
   // Health check (used by installer + monitoring).
   app.get('/api/v1/health', async () => ({ status: 'ok', version: CURRENT_VERSION, time: Math.floor(Date.now() / 1000) }));

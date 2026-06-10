@@ -1,4 +1,4 @@
-import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo } from '/js/api.js';
+import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo } from '/js/api.js?v=1.1.2';
 
 const root = document.getElementById('root');
 let me = null;
@@ -209,7 +209,8 @@ async function renderServerDetail(id) {
     document.getElementById('delBtn').onclick = async () => {
       if (!confirm(`Delete "${s.name}" and all its logs?`)) return;
       try {
-        await api(`/api/v1/servers/${s.id}`, { method: 'DELETE' });
+        // POST alias instead of DELETE — some firewalls drop DELETE requests.
+        await api(`/api/v1/servers/${s.id}/delete`, { method: 'POST' });
         toast('Server deleted', 'success'); location.hash = '#/dashboard';
       } catch (err) { toast(err.message, 'error'); }
     };
@@ -513,8 +514,8 @@ function closeModal() { document.getElementById('modalBack')?.remove(); }
 Object.assign(window.LW, {
   closeModal,
   testChan: async (id) => { try { await api(`/api/v1/channels/${id}/test`, { method: 'POST' }); toast('Test sent', 'success'); } catch (e) { toast(e.message, 'error'); } },
-  delChan: async (id) => { if (confirm('Delete channel?')) { try { await api(`/api/v1/channels/${id}`, { method: 'DELETE' }); reloadAlerts(); } catch (e) { toast(e.message, 'error'); } } },
-  delRule: async (id) => { if (confirm('Delete rule?')) { try { await api(`/api/v1/rules/${id}`, { method: 'DELETE' }); reloadAlerts(); } catch (e) { toast(e.message, 'error'); } } },
+  delChan: async (id) => { if (confirm('Delete channel?')) { try { await api(`/api/v1/channels/${id}/delete`, { method: 'POST' }); reloadAlerts(); } catch (e) { toast(e.message, 'error'); } } },
+  delRule: async (id) => { if (confirm('Delete rule?')) { try { await api(`/api/v1/rules/${id}/delete`, { method: 'POST' }); reloadAlerts(); } catch (e) { toast(e.message, 'error'); } } },
   editRule: (id) => ruleModal((window._rules || []).find((r) => r.id === id)),
-  delUser: async (id) => { if (confirm('Delete user?')) { try { await api(`/api/v1/users/${id}`, { method: 'DELETE' }); renderSettings(); } catch (e) { toast(e.message, 'error'); } } },
+  delUser: async (id) => { if (confirm('Delete user?')) { try { await api(`/api/v1/users/${id}/delete`, { method: 'POST' }); renderSettings(); } catch (e) { toast(e.message, 'error'); } } },
 });
