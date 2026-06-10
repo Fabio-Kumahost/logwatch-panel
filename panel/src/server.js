@@ -12,6 +12,7 @@ import './db/index.js'; // applies schema on import
 import { reloadRules, seedDefaultRules } from './services/alerts.js';
 import { startRetention } from './services/retention.js';
 import { startHeartbeat } from './services/heartbeat.js';
+import { startUpdater, CURRENT_VERSION } from './services/updater.js';
 
 import authRoutes from './routes/auth.routes.js';
 import serverRoutes from './routes/servers.routes.js';
@@ -21,6 +22,7 @@ import alertRoutes from './routes/alerts.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import agentInstallRoutes from './routes/agent-install.routes.js';
 import streamRoutes from './routes/stream.routes.js';
+import systemRoutes from './routes/system.routes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = resolve(__dirname, '../public');
@@ -46,7 +48,7 @@ export async function buildApp() {
   await app.register(fastifyStatic, { root: publicDir, prefix: '/' });
 
   // Health check (used by installer + monitoring).
-  app.get('/api/v1/health', async () => ({ status: 'ok', version: '1.0.0', time: Math.floor(Date.now() / 1000) }));
+  app.get('/api/v1/health', async () => ({ status: 'ok', version: CURRENT_VERSION, time: Math.floor(Date.now() / 1000) }));
 
   await app.register(authRoutes);
   await app.register(serverRoutes);
@@ -56,6 +58,7 @@ export async function buildApp() {
   await app.register(adminRoutes);
   await app.register(agentInstallRoutes);
   await app.register(streamRoutes);
+  await app.register(systemRoutes);
 
   // SPA fallback: serve index.html for non-API GET routes.
   app.setNotFoundHandler((request, reply) => {
@@ -75,6 +78,7 @@ async function main() {
   const app = await buildApp();
   startRetention(app.log);
   startHeartbeat(app.log);
+  startUpdater(app.log);
 
   try {
     await app.listen({ host: config.host, port: config.port });

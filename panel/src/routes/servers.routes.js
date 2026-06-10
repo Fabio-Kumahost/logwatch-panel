@@ -82,8 +82,41 @@ export default async function serverRoutes(app) {
   });
 
   app.delete('/api/v1/servers/:id', { preHandler: requireRole('operator') }, async (request, reply) => {
-    const info = db.prepare('DELETE FROM servers WHERE id = ?').run(request.params.id);
-    if (info.changes === 0) return reply.code(404).send({ error: 'not found' });
+    const id = Number(request.params.id);
+    const s = db.prepare('SELECT id FROM servers WHERE id = ?').get(id);
+    if (!s) return reply.code(404).send({ error: 'not found' });
+
+    // A server can own hundreds of thousands of log rows. Letting the FK
+    // CASCADE delete them synchronously blocks the event loop for minutes and
+    // the whole panel appears offline ("failed to fetch"). Instead: remove the
+    // server row immediately (FKs briefly off so the cascade doesn't fire) and
+    // purge its logs in background chunks that yield between batches.
+    db.pragma('foreign_keys = OFF');
+    db.prepare('DELETE FROM servers WHERE id = ?').run(id);
+    db.pragma('foreign_keys = ON');
+    db.prepare('DELETE FROM alert_events WHERE server_id = ?').run(id);
+    db.prepare('DELETE FROM rules WHERE server_id = ?').run(id);
+
+    purgeServerLogs(id, request.log);
     return { ok: true };
   });
+}
+
+// Deletes a removed server's logs in chunks without blocking the event loop.
+async function purgeServerLogs(serverId, log) {
+  const chunk = db.prepare(
+    'DELETE FROM logs WHERE id IN (SELECT id FROM logs WHERE server_id = ? LIMIT 5000)'
+  );
+  let total = 0;
+  try {
+    for (;;) {
+      const { changes } = chunk.run(serverId);
+      total += changes;
+      if (changes === 0) break;
+      await new Promise((resolve) => setImmediate(resolve)); // yield to other requests
+    }
+    if (total > 0) log?.info(`[servers] purged ${total} log rows of deleted server #${serverId}`);
+  } catch (err) {
+    log?.error(`[servers] background log purge failed for #${serverId}: ${err.message}`);
+  }
 }

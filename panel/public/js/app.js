@@ -97,7 +97,8 @@ function renderLogin() {
 
 // Dashboard ---------------------------------------------------------------
 async function renderDashboard() {
-  shell('/dashboard', `<div class="page-head"><h2>Dashboard</h2></div><div id="dash">Loading…</div>`);
+  shell('/dashboard', `<div id="updateBanner"></div><div class="page-head"><h2>Dashboard</h2></div><div id="dash">Loading…</div>`);
+  renderUpdateBanner();
   try {
     const [servers, stats] = await Promise.all([api('/api/v1/servers'), api('/api/v1/logs/stats')]);
     const online = servers.filter((s) => s.status === 'online').length;
@@ -116,6 +117,22 @@ async function renderDashboard() {
       <div class="cards">${servers.map(serverCard).join('') || '<div class="dim">No servers yet. Click “Add server”.</div>'}</div>`;
     document.getElementById('addServer').onclick = addServerModal;
   } catch (err) { toast(err.message, 'error'); }
+}
+
+async function renderUpdateBanner() {
+  try {
+    const u = await api('/api/v1/system/update');
+    if (!u.update_available) return;
+    const el = document.getElementById('updateBanner');
+    if (!el) return;
+    el.innerHTML = `<div class="card" style="margin-bottom:16px;border-color:var(--accent)">
+      🚀 <b>Update available:</b> v${esc(u.current)} → <b>v${esc(u.latest)}</b>
+      <span class="dim">— run this on your panel VPS:</span>
+      <div class="code-box" style="margin-top:8px">${esc(u.update_command)}</div>
+      <button class="btn sm" style="margin-top:8px" id="copyUpd">Copy command</button>
+    </div>`;
+    document.getElementById('copyUpd').onclick = () => { navigator.clipboard.writeText(u.update_command); toast('Copied', 'success'); };
+  } catch { /* update info is best-effort */ }
 }
 
 function serverCard(s) {
@@ -400,11 +417,29 @@ function ruleModal(existing) {
 async function renderSettings() {
   shell('/settings', `<div class="page-head"><h2>Settings</h2></div><div id="settingsBody">Loading…</div>`);
   const isAdmin = me.role === 'admin';
-  const [settings, users] = await Promise.all([
+  const [settings, users, upd] = await Promise.all([
     api('/api/v1/settings'),
     isAdmin ? api('/api/v1/users') : Promise.resolve([]),
+    api('/api/v1/system/update').catch(() => null),
   ]);
+  const updHtml = upd ? `
+    <div class="card" style="margin-bottom:16px">
+      <h3>Software update</h3>
+      <div>Installed: <b>v${esc(upd.current)}</b>
+        ${upd.latest ? ` · Latest on GitHub: <b>v${esc(upd.latest)}</b>` : ''}
+        ${upd.error ? ` · <span style="color:var(--orange)">check failed: ${esc(upd.error)}</span>` : ''}
+      </div>
+      ${upd.update_available
+        ? `<div style="margin-top:8px">🚀 <b>Update available.</b> Run on the panel VPS:</div>
+           <div class="code-box" style="margin-top:6px">${esc(upd.update_command)}</div>`
+        : `<div class="dim" style="margin-top:6px">${upd.latest ? 'You are up to date.' : 'No version information yet.'}</div>`}
+      <div class="row" style="margin-top:10px">
+        <button class="btn secondary sm" id="checkUpd">Check now</button>
+        <span class="dim">${upd.checked_at ? 'last checked ' + fmtAgo(upd.checked_at) : ''}</span>
+      </div>
+    </div>` : '';
   document.getElementById('settingsBody').innerHTML = `
+    ${updHtml}
     <div class="card" style="margin-bottom:16px">
       <h3>Retention</h3>
       <div class="row"><label class="row">Keep logs for <input id="ret" type="number" min="0" style="width:90px" value="${settings.retention_days || 0}" /> days (0 = forever)</label>
@@ -431,6 +466,16 @@ async function renderSettings() {
       </div>
     </div>` : ''}`;
 
+  const checkBtn = document.getElementById('checkUpd');
+  if (checkBtn) {
+    checkBtn.onclick = async () => {
+      checkBtn.disabled = true;
+      try {
+        await api('/api/v1/system/update/check', { method: 'POST' });
+        renderSettings();
+      } catch (err) { toast(err.message, 'error'); checkBtn.disabled = false; }
+    };
+  }
   document.getElementById('saveRet').onclick = async () => {
     await api('/api/v1/settings', { method: 'PUT', body: { retention_days: Number(document.getElementById('ret').value) } });
     toast('Saved', 'success');

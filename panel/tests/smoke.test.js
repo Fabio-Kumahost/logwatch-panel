@@ -168,6 +168,62 @@ test('alert events recorded for error/critical default rules', async () => {
   assert.ok(res.json().length >= 1, 'expected at least one fired alert event');
 });
 
+test('update status endpoint returns version info', async () => {
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/v1/system/update',
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.match(body.current, /^\d+\.\d+\.\d+$/);
+  assert.match(body.update_command, /update\.sh/);
+});
+
+test('deleting a server with many logs responds fast (no event-loop block)', async () => {
+  // Create a server and bulk-ingest a sizable log history.
+  const create = await app.inject({
+    method: 'POST',
+    url: '/api/v1/servers',
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: { name: 'bulk-01' },
+  });
+  const { id, token } = create.json();
+  const entries = Array.from({ length: 1000 }, (_, i) => ({
+    source: 'syslog', service: 'stress', message: `bulk log line ${i} with some padding text to make it realistic`,
+  }));
+  for (let batch = 0; batch < 5; batch++) {
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/v1/ingest',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { entries },
+    });
+    assert.equal(r.statusCode, 202);
+  }
+
+  const t0 = Date.now();
+  const del = await app.inject({
+    method: 'DELETE',
+    url: `/api/v1/servers/${id}`,
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  const elapsed = Date.now() - t0;
+  assert.equal(del.statusCode, 200);
+  assert.ok(elapsed < 2000, `delete took ${elapsed}ms — should respond immediately`);
+
+  // Server row is gone right away; logs are purged in background.
+  const list = await app.inject({
+    method: 'GET', url: '/api/v1/servers', headers: { authorization: `Bearer ${userToken}` },
+  });
+  assert.ok(!list.json().some((s) => s.id === id));
+
+  // Give the background purge a moment, then verify the logs are gone too.
+  await new Promise((r) => setTimeout(r, 300));
+  const count = db.prepare('SELECT COUNT(*) AS n FROM logs WHERE server_id = ?').get(id).n;
+  assert.equal(count, 0, 'background purge should remove all logs');
+});
+
 test('agent install script is served publicly', async () => {
   const res = await app.inject({ method: 'GET', url: '/agent/install.sh' });
   assert.equal(res.statusCode, 200);

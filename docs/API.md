@@ -120,8 +120,17 @@ Emits one JSON log entry per message.
 - `GET/POST/DELETE /api/v1/users` *(admin)* — roles: `admin`, `operator`, `viewer`.
 - `GET/PUT /api/v1/settings` — `retention_days`, `alert_channel_id` (for system alerts).
 
+## System / updates
+
+- `GET /api/v1/system/update` → `{ current, latest, update_available, checked_at, error, update_command }`
+  — cached result of the 6-hourly GitHub version check.
+- `POST /api/v1/system/update/check` *(operator+)* → forces a re-check now.
+
+Note: `DELETE /api/v1/servers/:id` returns immediately; the server's log history is
+purged in background chunks so large histories never block the panel.
+
 ## Health
-### `GET /api/v1/health` → `{ "status": "ok", "version": "1.0.0", "time": <unix> }`
+### `GET /api/v1/health` → `{ "status": "ok", "version": "<panel version>", "time": <unix> }`
 
 ## Agent distribution (public, no auth)
 - `GET /agent/install.sh` — the installer script.
