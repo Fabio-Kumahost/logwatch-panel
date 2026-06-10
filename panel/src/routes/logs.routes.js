@@ -11,6 +11,8 @@ const querySchema = z.object({
   service: z.string().max(128).optional(),
   from: z.coerce.number().int().optional(), // unix seconds
   to: z.coerce.number().int().optional(),
+  field: z.string().max(64).optional(),       // structured field key
+  fieldval: z.string().max(256).optional(),   // structured field value
   limit: z.coerce.number().int().min(1).max(1000).default(200),
   offset: z.coerce.number().int().min(0).default(0),
   sort: z.enum(['asc', 'desc']).default('desc'),
@@ -51,13 +53,18 @@ export default async function logRoutes(app) {
       where.push(`logs.level IN (${allowed.map(() => '?').join(',')})`);
       params.push(...allowed);
     }
+    if (f.field) {
+      // Filter on an extracted structured field via JSON1.
+      where.push('json_extract(logs.fields, ?) = ?');
+      params.push(`$.${f.field}`, f.fieldval ?? '');
+    }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const dir = f.sort === 'asc' ? 'ASC' : 'DESC'; // validated enum, not user SQL
     const rows = db
       .prepare(
         `SELECT logs.id, logs.server_id, logs.ts, logs.received_at, logs.source,
-                logs.service, logs.level, logs.host, logs.message,
+                logs.service, logs.level, logs.host, logs.message, logs.fields,
                 servers.name AS server_name
          FROM ${from}
          LEFT JOIN servers ON servers.id = logs.server_id
@@ -67,6 +74,9 @@ export default async function logRoutes(app) {
       )
       .all(...params, f.limit, f.offset);
 
+    for (const r of rows) {
+      if (r.fields) { try { r.fields = JSON.parse(r.fields); } catch { r.fields = null; } }
+    }
     return { logs: rows, limit: f.limit, offset: f.offset, sort: f.sort };
   });
 

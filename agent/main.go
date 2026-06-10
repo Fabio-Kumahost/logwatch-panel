@@ -18,6 +18,7 @@ import (
 	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/collector"
 	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/config"
 	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/discovery"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/metrics"
 	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/model"
 	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/sender"
 	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/version"
@@ -73,6 +74,25 @@ func main() {
 	}
 	if backfill > 0 {
 		_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o640)
+	}
+
+	// Periodic host metrics (CPU/RAM/disk/load) every 30s.
+	if cfg.MetricsEnabled() {
+		go func() {
+			tick := time.NewTicker(30 * time.Second)
+			defer tick.Stop()
+			for {
+				if err := snd.PostJSON("/api/v1/metrics", metrics.Collect()); err != nil {
+					log.Printf("metrics send: %v", err)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+				}
+			}
+		}()
+		log.Printf("host metrics reporting started")
 	}
 
 	// Periodic self-update against the panel's distributed agent version.

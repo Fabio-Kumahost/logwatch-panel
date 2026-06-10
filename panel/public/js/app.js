@@ -1,5 +1,5 @@
-import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo, downloadWithAuth } from '/js/api.js?v=1.4.0';
-import { suggestFix } from '/js/solutions.js?v=1.4.0';
+import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo, downloadWithAuth } from '/js/api.js?v=1.5.0';
+import { suggestFix } from '/js/solutions.js?v=1.5.0';
 
 const root = document.getElementById('root');
 let me = null;
@@ -271,6 +271,7 @@ async function addServerModal() {
     <div class="form-grid">
       <label>Name<input id="srvName" placeholder="web-01" /></label>
       <label>Group<input id="srvGroup" placeholder="default" value="default" /></label>
+      <label>Source IP <span class="dim">(optional — for syslog/foreign-source ingest mapping)</span><input id="srvIp" placeholder="e.g. 10.0.0.5" /></label>
       <div class="row"><button class="btn" id="srvCreate">Create</button><button class="btn secondary" onclick="LW.closeModal()">Cancel</button></div>
       <div id="srvResult"></div>
     </div>`);
@@ -278,7 +279,8 @@ async function addServerModal() {
     const name = document.getElementById('srvName').value.trim();
     if (!name) return;
     try {
-      const r = await api('/api/v1/servers', { method: 'POST', body: { name, group_name: document.getElementById('srvGroup').value.trim() || 'default' } });
+      const ip = document.getElementById('srvIp').value.trim();
+      const r = await api('/api/v1/servers', { method: 'POST', body: { name, group_name: document.getElementById('srvGroup').value.trim() || 'default', ...(ip ? { ingest_ip: ip } : {}) } });
       document.getElementById('srvResult').innerHTML = `
         <div class="dim" style="margin-top:8px">Run this on the new server (token shown once):</div>
         <div class="code-box">${esc(r.install_command)}</div>
@@ -294,12 +296,26 @@ async function renderServerDetail(id) {
   try {
     const s = await api(`/api/v1/servers/${id}`);
     document.getElementById('sdTitle').textContent = s.name;
+    const latest = (s.metrics && s.metrics.length) ? s.metrics[s.metrics.length - 1] : null;
+    const gauge = (label, val, unit = '%') => {
+      if (val == null) return '';
+      const color = val >= 90 ? 'var(--red)' : val >= 75 ? 'var(--orange)' : 'var(--green)';
+      return `<div class="stat"><div class="n" style="color:${color}">${val}${unit}</div><div class="l">${label}</div></div>`;
+    };
+    const metricsHtml = latest ? `
+      <div class="page-head" style="margin-top:4px"><h3 style="margin:0">Host metrics</h3><span class="dim" style="margin-left:8px">updated ${fmtAgo(latest.ts)}</span></div>
+      <div class="stat-grid">
+        ${gauge('CPU', latest.cpu)}${gauge('Memory', latest.mem)}${gauge('Disk', latest.disk)}
+        <div class="stat"><div class="n">${latest.load1 ?? '—'}</div><div class="l">Load (1m)</div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px">${metricSpark(s.metrics)}</div>` : '';
     document.getElementById('sd').innerHTML = `
       <div class="stat-grid">
         <div class="stat"><div class="n">${s.stats?.total || 0}</div><div class="l">Total logs</div></div>
         <div class="stat"><div class="n" style="color:var(--red)">${s.stats?.errors || 0}</div><div class="l">Errors</div></div>
         <div class="stat"><div class="n">${esc(s.status)}</div><div class="l">Status</div></div>
       </div>
+      ${metricsHtml}
       <div class="card">
         <div><b>Hostname:</b> ${esc(s.hostname || '—')}</div>
         <div><b>OS:</b> ${esc(s.os || '—')} ${esc(s.os_version || '')}</div>
@@ -327,6 +343,26 @@ async function renderServerDetail(id) {
       } catch (err) { toast(err.message, 'error'); }
     };
   } catch (err) { toast(err.message, 'error'); }
+}
+
+// Multi-line sparkline (CPU/Mem/Disk over time) for the server detail page.
+function metricSpark(metrics) {
+  if (!metrics || metrics.length < 2) return '<div class="dim">Collecting metrics…</div>';
+  const W = 600, H = 90, pad = 4;
+  const n = metrics.length;
+  const line = (key, color) => {
+    const pts = metrics.map((m, i) => {
+      const x = pad + (i / (n - 1)) * (W - pad * 2);
+      const v = m[key] == null ? 0 : m[key];
+      const y = H - pad - (v / 100) * (H - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return `<polyline fill="none" stroke="${color}" stroke-width="1.5" points="${pts}"/>`;
+  };
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none" style="display:block">
+    ${line('cpu', 'var(--blue)')}${line('mem', 'var(--orange)')}${line('disk', 'var(--red)')}
+  </svg>
+  <div class="dim" style="font-size:11px"><span style="color:var(--blue)">▮</span> CPU · <span style="color:var(--orange)">▮</span> Memory · <span style="color:var(--red)">▮</span> Disk (last ${n} samples)</div>`;
 }
 
 // Logs --------------------------------------------------------------------
@@ -363,9 +399,24 @@ async function renderLogs() {
   sel('level').innerHTML += facets.levels.map((l) => `<option value="${l}" ${l === initial.level ? 'selected' : ''}>${l}+</option>`).join('');
   sel('source').innerHTML += facets.sources.map((s) => `<option value="${esc(s)}" ${s === initial.source ? 'selected' : ''}>${esc(s)}</option>`).join('');
 
+  // Structured-field filter comes via the URL (clicking a field chip).
+  const fieldFilter = (initial.field && initial.fieldval !== undefined)
+    ? { field: initial.field, fieldval: initial.fieldval } : null;
+  if (fieldFilter) {
+    const bar = document.querySelector('.toolbar');
+    const chip = document.createElement('span');
+    chip.className = 'live-badge';
+    chip.style.cssText = 'background:var(--accent2,var(--blue));cursor:pointer';
+    chip.textContent = `${fieldFilter.field}=${fieldFilter.fieldval} ✕`;
+    chip.title = 'Remove field filter';
+    chip.onclick = () => { location.hash = '#/logs'; };
+    bar.appendChild(chip);
+  }
+
   async function doSearch() {
     const params = new URLSearchParams();
     for (const k of ['q', 'server_id', 'level', 'source']) { const v = sel(k).value.trim(); if (v) params.set(k, v); }
+    if (fieldFilter) { params.set('field', fieldFilter.field); params.set('fieldval', fieldFilter.fieldval); }
     params.set('sort', sel('sortDir').value);
     params.set('limit', '300');
     try {
@@ -424,6 +475,11 @@ function logDetailModal(l) {
         <ol style="margin:0;padding-left:18px">${fix.steps.map((s) => `<li style="margin-bottom:4px"><span class="mono">${esc(s)}</span></li>`).join('')}</ol>
       </div>`
     : `<div class="dim" style="margin-top:12px">No specific suggestion for this entry.</div>`;
+  const fields = l.fields && typeof l.fields === 'object' ? l.fields : null;
+  const fieldsHtml = fields ? `<div style="margin:8px 0"><div class="l dim">EXTRACTED FIELDS (click to filter)</div>
+    <div class="row wrap" style="margin-top:4px">${Object.entries(fields).map(([k, v]) =>
+      `<button class="badge lvl-info" style="cursor:pointer;border:none" onclick="LW.fieldFilter(${JSON.stringify(k).replace(/"/g, '&quot;')}, ${JSON.stringify(String(v)).replace(/"/g, '&quot;')})">${esc(k)}=${esc(String(v).slice(0, 40))}</button>`
+    ).join(' ')}</div></div>` : '';
   modal(`<h3>Log entry</h3>
     <div class="server-meta" style="margin-bottom:8px">
       <div><b>Time:</b> ${fmtTime(l.ts)}</div>
@@ -432,6 +488,7 @@ function logDetailModal(l) {
       <div><b>Level:</b> <span class="badge lvl-${l.level || 'info'}">${esc(l.level || 'info')}</span></div>
     </div>
     <div class="code-box">${esc(l.message)}</div>
+    ${fieldsHtml}
     ${fixHtml}
     <div class="row" style="margin-top:12px">
       <button class="btn secondary sm" id="copyMsg">Copy message</button>
@@ -496,9 +553,10 @@ async function reloadAlerts() {
     <button class="btn danger sm" onclick="LW.delRule(${r.id})">Delete</button></td></tr>`).join('')}</table>` : '<div class="dim">No rules.</div>';
   window._rules = rules;
 
-  document.getElementById('events').innerHTML = events.length ? `<table class="grid"><tr><th>Time</th><th>Rule</th><th>Server</th><th>Level</th><th>Message</th></tr>${events.map((e) => `
+  document.getElementById('events').innerHTML = events.length ? `<table class="grid"><tr><th>Time</th><th>Rule</th><th>Server</th><th>Level</th><th>Message</th><th></th></tr>${events.map((e) => `
     <tr><td>${fmtTime(e.fired_at)}</td><td>${esc(e.rule_name || 'system')}</td><td>${esc(e.server_name || '—')}</td>
-    <td><span class="badge lvl-${e.level || 'info'}">${esc(e.level || '')}</span></td><td class="mono">${esc((e.message || '').slice(0, 160))}</td></tr>`).join('')}</table>`
+    <td><span class="badge lvl-${e.level || 'info'}">${esc(e.level || '')}</span></td><td class="mono">${esc((e.message || '').slice(0, 160))}</td>
+    <td>${e.acknowledged ? `<span class="dim" title="by ${esc(e.acknowledged_by || '')}">✔ ack</span>` : `<button class="btn secondary sm" onclick="LW.ackAlert(${e.id})">Ack</button>`}</td></tr>`).join('')}</table>`
     : '<div class="dim">No alerts fired yet.</div>';
 }
 
@@ -507,6 +565,10 @@ const CHANNEL_FIELDS = {
   gotify: [['url', 'Gotify URL'], ['token', 'App token']],
   telegram: [['bot_token', 'Bot token'], ['chat_id', 'Chat ID']],
   smtp: [['host', 'SMTP host'], ['port', 'Port'], ['from', 'From'], ['to', 'To'], ['user', 'User (optional)'], ['pass', 'Password (optional)']],
+  slack: [['webhook_url', 'Slack incoming webhook URL']],
+  teams: [['webhook_url', 'Microsoft Teams webhook URL']],
+  pagerduty: [['routing_key', 'PagerDuty Events API v2 routing key']],
+  opsgenie: [['api_key', 'Opsgenie API key'], ['eu', 'EU region? true/false (optional)']],
 };
 function channelModal() {
   const types = Object.keys(CHANNEL_FIELDS);
@@ -549,6 +611,7 @@ function ruleModal(existing) {
         <label style="flex:1">Cooldown (s)<input id="rCooldown" type="number" min="0" value="${r.cooldown_seconds || 300}" /></label>
       </div>
       <label>Channel<select id="rChannel"><option value="">— none (log only) —</option>${chans.map((c) => `<option value="${c.id}" ${c.id === r.channel_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+      <label>Quiet hours (e.g. 22-7, suppress overnight; blank = always)<input id="rQuiet" value="${esc(r.quiet_hours || '')}" placeholder="22-7" /></label>
       <label class="row"><input type="checkbox" id="rEnabled" ${r.enabled ? 'checked' : ''} style="width:auto"/> Enabled</label>
       <div class="row"><button class="btn" id="rSave">Save</button><button class="btn secondary" onclick="LW.closeModal()">Cancel</button></div>
     </div>`);
@@ -569,6 +632,7 @@ function ruleModal(existing) {
       window_seconds: Number(document.getElementById('rWindow').value),
       cooldown_seconds: Number(document.getElementById('rCooldown').value),
       channel_id: document.getElementById('rChannel').value ? Number(document.getElementById('rChannel').value) : null,
+      quiet_hours: document.getElementById('rQuiet').value.trim() || null,
       enabled: document.getElementById('rEnabled').checked,
     };
     try {
@@ -747,4 +811,6 @@ Object.assign(window.LW, {
   delRule: async (id) => { if (confirm('Delete rule?')) { try { await api(`/api/v1/rules/${id}/delete`, { method: 'POST' }); reloadAlerts(); } catch (e) { toast(e.message, 'error'); } } },
   editRule: (id) => ruleModal((window._rules || []).find((r) => r.id === id)),
   delUser: async (id) => { if (confirm('Delete user?')) { try { await api(`/api/v1/users/${id}/delete`, { method: 'POST' }); renderSettings(); } catch (e) { toast(e.message, 'error'); } } },
+  ackAlert: async (id) => { try { await api(`/api/v1/alerts/events/${id}/ack`, { method: 'POST', body: {} }); reloadAlerts(); } catch (e) { toast(e.message, 'error'); } },
+  fieldFilter: (k, v) => { closeModal(); location.hash = `#/logs?field=${encodeURIComponent(k)}&fieldval=${encodeURIComponent(v)}`; },
 });

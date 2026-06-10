@@ -7,7 +7,7 @@ import { LEVELS } from '../utils/normalize.js';
 
 const channelSchema = z.object({
   name: z.string().min(1).max(120),
-  type: z.enum(['discord', 'gotify', 'smtp', 'telegram']),
+  type: z.enum(['discord', 'gotify', 'smtp', 'telegram', 'slack', 'teams', 'pagerduty', 'opsgenie']),
   config: z.record(z.any()),
   enabled: z.boolean().optional(),
 });
@@ -25,6 +25,8 @@ const ruleSchema = z.object({
   threshold: z.coerce.number().int().min(1).max(10000).default(1),
   cooldown_seconds: z.coerce.number().int().min(0).max(86400).default(300),
   channel_id: z.coerce.number().int().optional().nullable(),
+  // "22-7" = suppress between 22:00 and 07:00 (server local time). Empty = always.
+  quiet_hours: z.string().regex(/^\d{1,2}-\d{1,2}$/).optional().nullable(),
 });
 
 function redactChannel(c) {
@@ -103,9 +105,9 @@ export default async function alertRoutes(app) {
     const info = db
       .prepare(
         `INSERT INTO rules(name,enabled,match_type,pattern,min_level,source,server_group,server_id,
-           window_seconds,threshold,cooldown_seconds,channel_id)
+           window_seconds,threshold,cooldown_seconds,channel_id,quiet_hours)
          VALUES(@name,@enabled,@match_type,@pattern,@min_level,@source,@server_group,@server_id,
-           @window_seconds,@threshold,@cooldown_seconds,@channel_id)`
+           @window_seconds,@threshold,@cooldown_seconds,@channel_id,@quiet_hours)`
       )
       .run({
         ...d,
@@ -116,6 +118,7 @@ export default async function alertRoutes(app) {
         server_group: d.server_group || null,
         server_id: d.server_id || null,
         channel_id: d.channel_id || null,
+        quiet_hours: d.quiet_hours || null,
       });
     reloadRules();
     return reply.code(201).send({ id: info.lastInsertRowid });
@@ -130,7 +133,7 @@ export default async function alertRoutes(app) {
         `UPDATE rules SET name=@name,enabled=@enabled,match_type=@match_type,pattern=@pattern,
            min_level=@min_level,source=@source,server_group=@server_group,server_id=@server_id,
            window_seconds=@window_seconds,threshold=@threshold,cooldown_seconds=@cooldown_seconds,
-           channel_id=@channel_id WHERE id=@id`
+           channel_id=@channel_id,quiet_hours=@quiet_hours WHERE id=@id`
       )
       .run({
         ...d,
@@ -142,6 +145,7 @@ export default async function alertRoutes(app) {
         server_group: d.server_group || null,
         server_id: d.server_id || null,
         channel_id: d.channel_id || null,
+        quiet_hours: d.quiet_hours || null,
       });
     if (info.changes === 0) return reply.code(404).send({ error: 'not found' });
     invalidateRegex(Number(request.params.id));
@@ -157,6 +161,15 @@ export default async function alertRoutes(app) {
   };
   app.delete('/api/v1/rules/:id', { preHandler: requireRole('operator') }, deleteRule);
   app.post('/api/v1/rules/:id/delete', { preHandler: requireRole('operator') }, deleteRule);
+
+  // Acknowledge a fired alert (on-call workflow).
+  app.post('/api/v1/alerts/events/:id/ack', { preHandler: requireUser }, async (request, reply) => {
+    const info = db
+      .prepare('UPDATE alert_events SET acknowledged = 1, acknowledged_by = ? WHERE id = ?')
+      .run(request.user.username, request.params.id);
+    if (info.changes === 0) return reply.code(404).send({ error: 'not found' });
+    return { ok: true };
+  });
 
   // ---- Alert event history ----
   app.get('/api/v1/alerts/events', { preHandler: requireUser }, async (request) => {

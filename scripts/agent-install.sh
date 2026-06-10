@@ -26,7 +26,7 @@ BIN_PATH="/usr/local/bin/logwatch-agent"
 CONF_DIR="/etc/logwatch-agent"
 CONF_FILE="${CONF_DIR}/config.json"
 STATE_DIR="/var/lib/logwatch-agent"
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 log()  { printf '\033[0;36m[logwatch]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[0;32m[ ok ]\033[0m %s\n' "$*"; }
@@ -181,6 +181,7 @@ write_config() {
   "docker": true,
   "auto_update": true,
   "backfill_lines": 300,
+  "metrics": true,
   "files": [],
   "exclude": []
 }

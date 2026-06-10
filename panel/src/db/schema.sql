@@ -71,7 +71,7 @@ END;
 CREATE TABLE IF NOT EXISTS channels (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
-  type       TEXT NOT NULL CHECK (type IN ('discord','gotify','smtp','telegram')),
+  type       TEXT NOT NULL,               -- validated in the API layer (zod)
   config     TEXT NOT NULL,               -- JSON, secrets included (file is chmod 600)
   enabled    INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
@@ -124,3 +124,16 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ip        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
+
+-- Host resource metrics reported by agents (CPU/RAM/disk/load).
+CREATE TABLE IF NOT EXISTS host_metrics (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  ts        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  cpu       REAL,   -- percent 0..100
+  mem       REAL,   -- percent 0..100
+  disk      REAL,   -- percent 0..100 (root fs)
+  load1     REAL,
+  uptime    INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_hostmetrics_server_ts ON host_metrics(server_id, ts DESC);

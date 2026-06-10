@@ -77,4 +77,7 @@ export const config = {
   isProd: process.env.NODE_ENV === 'production',
   // Optional bearer token protecting GET /metrics (Prometheus). Unset = open.
   metricsToken: process.env.METRICS_TOKEN || '',
+  // Optional UDP syslog listener (RFC3164/5424). 0 = disabled. Maps incoming
+  // by source IP to a server's ingest_ip. Use >1024 unless running as root.
+  syslogUdpPort: int('SYSLOG_UDP_PORT', 0),
 };

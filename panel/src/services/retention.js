@@ -24,6 +24,9 @@ export async function pruneOnce() {
   if (total > 0) {
     db.prepare('DELETE FROM alert_events WHERE fired_at < ?').run(cutoff);
   }
+  // Host metrics: keep a shorter window (7 days max within retention).
+  const metricCutoff = Math.max(cutoff, Math.floor(Date.now() / 1000) - 7 * 86400);
+  db.prepare('DELETE FROM host_metrics WHERE ts < ?').run(metricCutoff);
   return total;
 }
 

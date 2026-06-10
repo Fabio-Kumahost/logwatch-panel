@@ -52,7 +52,20 @@ function ruleMatchesEntry(rule, entry, server) {
   return false;
 }
 
+// "22-7" suppresses alerts between 22:00 and 07:00 (server local time).
+function inQuietHours(quiet, now = new Date()) {
+  if (!quiet) return false;
+  const m = /^(\d{1,2})-(\d{1,2})$/.exec(quiet);
+  if (!m) return false;
+  const start = Number(m[1]) % 24;
+  const end = Number(m[2]) % 24;
+  const h = now.getHours();
+  return start <= end ? h >= start && h < end : h >= start || h < end;
+}
+
 function shouldFire(rule, nowSec) {
+  // Quiet hours gate.
+  if (inQuietHours(rule.quiet_hours)) return false;
   // Cooldown gate.
   if (rule.last_fired_at && nowSec - rule.last_fired_at < rule.cooldown_seconds) return false;
 

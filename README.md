@@ -55,11 +55,17 @@ pushed a Discord/Gotify/Telegram/email alert the moment something breaks.
 - Self-registers with a token, ships over **HTTPS**, has **update** and **uninstall** built into the installer
 
 **Alerting**
-- Channels: **Discord**, **Gotify**, **Telegram**, **SMTP** (email)
+- Channels: **Discord**, **Gotify**, **Telegram**, **SMTP**, **Slack**, **MS Teams**, **PagerDuty**, **Opsgenie**
 - Rule UI: keyword / regex / log-level match, source & server-group filters,
-  **frequency window + threshold**, **cooldown** anti-spam, target channel
+  **frequency window + threshold**, **cooldown** anti-spam, **quiet hours**, target channel
+- **Acknowledge** fired alerts (on-call workflow)
 - Ships with sensible defaults: errors, critical, failed login, **SSH brute force**,
   kernel errors, service crashed, disk full — plus **agent offline / no logs**
+
+**Platform (v1.5)**
+- **Structured field extraction** (JSON, key=value, nginx/apache) → search & filter on fields
+- **Foreign-source ingest**: Vector, Fluent Bit, rsyslog, OpenTelemetry via HTTP; optional **UDP syslog**
+- **Host metrics** from the agent (CPU/RAM/disk/load) with charts + threshold alerts
 
 ## Collected log sources
 

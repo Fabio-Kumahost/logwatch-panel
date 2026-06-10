@@ -13,6 +13,7 @@ import { reloadRules, seedDefaultRules } from './services/alerts.js';
 import { startRetention } from './services/retention.js';
 import { startHeartbeat } from './services/heartbeat.js';
 import { startUpdater, CURRENT_VERSION } from './services/updater.js';
+import { startSyslog } from './services/syslog.js';
 
 import authRoutes from './routes/auth.routes.js';
 import serverRoutes from './routes/servers.routes.js';
@@ -51,6 +52,12 @@ export async function buildApp() {
       done(err, undefined);
     }
   });
+
+  // Raw body parsers for the foreign-source ingest endpoint (Vector, Fluent
+  // Bit, rsyslog omhttp, OTel). Stored as a string; the route splits lines.
+  const rawString = (req, body, done) => done(null, body);
+  app.addContentTypeParser('text/plain', { parseAs: 'string' }, rawString);
+  app.addContentTypeParser('application/x-ndjson', { parseAs: 'string' }, rawString);
 
   await app.register(fastifyJwt, { secret: config.jwtSecret });
   await app.register(fastifyRateLimit, {
@@ -105,6 +112,7 @@ async function main() {
   startRetention(app.log);
   startHeartbeat(app.log);
   startUpdater(app.log);
+  if (config.syslogUdpPort) startSyslog(config.syslogUdpPort, app.log);
 
   try {
     await app.listen({ host: config.host, port: config.port });

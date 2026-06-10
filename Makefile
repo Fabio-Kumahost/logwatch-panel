@@ -1,4 +1,4 @@
-VERSION ?= 1.1.0
+VERSION ?= 1.2.0
 LDFLAGS := -s -w -X github.com/Fabio-Kumahost/logwatch-panel/agent/internal/version.Version=$(VERSION)
 BIN_DIR := agent-bin
 

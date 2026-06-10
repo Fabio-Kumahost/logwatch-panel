@@ -12,6 +12,7 @@ function installCommand(token) {
 const createSchema = z.object({
   name: z.string().min(1).max(120),
   group_name: z.string().min(1).max(64).optional(),
+  ingest_ip: z.string().ip().optional(), // for syslog/foreign-source mapping
 });
 
 export default async function serverRoutes(app) {
@@ -46,8 +47,8 @@ export default async function serverRoutes(app) {
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
     const token = generateAgentToken();
     const info = db
-      .prepare('INSERT INTO servers(name, token_hash, group_name) VALUES(?,?,?)')
-      .run(parsed.data.name, hashToken(token), parsed.data.group_name || 'default');
+      .prepare('INSERT INTO servers(name, token_hash, group_name, ingest_ip) VALUES(?,?,?,?)')
+      .run(parsed.data.name, hashToken(token), parsed.data.group_name || 'default', parsed.data.ingest_ip || null);
     record(request, 'server.created', parsed.data.name);
     return reply.code(201).send({
       id: info.lastInsertRowid,
@@ -71,7 +72,11 @@ export default async function serverRoutes(app) {
       .prepare('SELECT DISTINCT source FROM logs WHERE server_id = ? AND source IS NOT NULL')
       .all(s.id)
       .map((r) => r.source);
-    return { ...s, token_hash: undefined, stats, sources };
+    const metrics = db
+      .prepare('SELECT ts, cpu, mem, disk, load1, uptime FROM host_metrics WHERE server_id = ? ORDER BY ts DESC LIMIT 120')
+      .all(s.id)
+      .reverse();
+    return { ...s, token_hash: undefined, stats, sources, metrics };
   });
 
   // Rotate the agent token (invalidates the old one).

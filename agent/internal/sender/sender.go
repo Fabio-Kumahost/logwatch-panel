@@ -87,3 +87,27 @@ func (s *Sender) Send(entries []model.Entry) error {
 func (s *Sender) Heartbeat() error {
 	return s.post("/api/v1/heartbeat", s.meta(nil))
 }
+
+// PostJSON sends an arbitrary JSON body to a panel path with agent auth.
+func (s *Sender) PostJSON(path string, body any) error {
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, s.cfg.PanelURL+path, bytes.NewReader(buf))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.cfg.Token)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("panel returned HTTP %d", resp.StatusCode)
+	}
+	return nil
+}

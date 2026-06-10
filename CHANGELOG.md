@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.0] — 2026-06-10 — "Platform"
+### Added
+- **Structured field extraction** on ingest (JSON, key=value, nginx/apache access
+  logs) → searchable fields; clickable field chips and `field`/`fieldval` filter.
+- **Foreign-source ingest**: `POST /api/v1/ingest/raw` (text/ndjson/json) for
+  Vector, Fluent Bit, rsyslog (omhttp), OTel collectors; optional **UDP syslog
+  listener** (`SYSLOG_UDP_PORT`, source-IP mapped via server `ingest_ip`).
+- **Host metrics** from the agent (CPU/RAM/disk/load) with server-detail charts
+  and built-in disk/memory threshold alerts.
+- **Alerting**: Slack, Microsoft Teams, PagerDuty and Opsgenie channels; rule
+  **quiet hours**; alert **acknowledgement** (on-call workflow).
+- Agent **1.2.0**: host-metrics collector (self-updates from older agents).
+
 ## [1.4.0] — 2026-06-10
 ### Added
 - **Two-factor authentication (TOTP / RFC 6238)** — optional per user, set up

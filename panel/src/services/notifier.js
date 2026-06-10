@@ -97,7 +97,84 @@ async function sendSmtp(cfg, alert) {
   });
 }
 
-const SENDERS = { discord: sendDiscord, gotify: sendGotify, telegram: sendTelegram, smtp: sendSmtp };
+// --- Slack (incoming webhook) ---------------------------------------------
+async function sendSlack(cfg, alert) {
+  if (!cfg.webhook_url) throw new Error('slack: webhook_url missing');
+  const emoji = alert.level === 'critical' ? ':rotating_light:' : alert.level === 'error' ? ':red_circle:' : ':large_yellow_circle:';
+  const res = await fetch(cfg.webhook_url, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      text: `${emoji} *${fmtTitle(alert)}*`,
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text: `${emoji} *${fmtTitle(alert)}*\n*Server:* ${alert.server || 'n/a'} · *Source:* ${alert.source || 'n/a'} · *Rule:* ${alert.rule || 'n/a'}` } },
+        { type: 'section', text: { type: 'mrkdwn', text: '```' + maskSecrets(alert.message).slice(0, 2800) + '```' } },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`slack: HTTP ${res.status}`);
+}
+
+// --- Microsoft Teams (incoming webhook) -----------------------------------
+async function sendTeams(cfg, alert) {
+  if (!cfg.webhook_url) throw new Error('teams: webhook_url missing');
+  const color = alert.level === 'critical' || alert.level === 'error' ? 'D24726' : 'D9A521';
+  const res = await fetch(cfg.webhook_url, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      '@type': 'MessageCard', '@context': 'http://schema.org/extensions', themeColor: color,
+      summary: fmtTitle(alert), title: fmtTitle(alert),
+      sections: [{
+        facts: [
+          { name: 'Server', value: String(alert.server || 'n/a') },
+          { name: 'Source', value: String(alert.source || 'n/a') },
+          { name: 'Rule', value: String(alert.rule || 'n/a') },
+        ],
+        text: maskSecrets(alert.message).slice(0, 3000),
+      }],
+    }),
+  });
+  if (!res.ok) throw new Error(`teams: HTTP ${res.status}`);
+}
+
+// --- PagerDuty (Events API v2) --------------------------------------------
+async function sendPagerDuty(cfg, alert) {
+  if (!cfg.routing_key) throw new Error('pagerduty: routing_key missing');
+  const severity = alert.level === 'critical' ? 'critical' : alert.level === 'error' ? 'error' : alert.level === 'warning' ? 'warning' : 'info';
+  const res = await fetch('https://events.pagerduty.com/v2/enqueue', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      routing_key: cfg.routing_key, event_action: 'trigger',
+      payload: {
+        summary: `${fmtTitle(alert)} — ${maskSecrets(alert.message).slice(0, 200)}`,
+        source: String(alert.server || 'logwatch'), severity,
+        custom_details: { rule: alert.rule, source: alert.source, message: maskSecrets(alert.message).slice(0, 1000) },
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`pagerduty: HTTP ${res.status}`);
+}
+
+// --- Opsgenie (Alert API) -------------------------------------------------
+async function sendOpsgenie(cfg, alert) {
+  if (!cfg.api_key) throw new Error('opsgenie: api_key missing');
+  const base = cfg.eu ? 'https://api.eu.opsgenie.com' : 'https://api.opsgenie.com';
+  const priority = alert.level === 'critical' ? 'P1' : alert.level === 'error' ? 'P2' : 'P3';
+  const res = await fetch(`${base}/v2/alerts`, {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `GenieKey ${cfg.api_key}` },
+    body: JSON.stringify({
+      message: `${fmtTitle(alert)} (${alert.server || 'n/a'})`,
+      description: maskSecrets(alert.message).slice(0, 1500),
+      priority, source: String(alert.server || 'logwatch'),
+      details: { source: alert.source || '', rule: alert.rule || '' },
+    }),
+  });
+  if (!res.ok) throw new Error(`opsgenie: HTTP ${res.status}`);
+}
+
+const SENDERS = {
+  discord: sendDiscord, gotify: sendGotify, telegram: sendTelegram, smtp: sendSmtp,
+  slack: sendSlack, teams: sendTeams, pagerduty: sendPagerDuty, opsgenie: sendOpsgenie,
+};
 
 // channel: { type, config(JSON string|object) }
 export async function sendToChannel(channel, alert) {

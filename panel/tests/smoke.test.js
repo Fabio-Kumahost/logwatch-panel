@@ -397,6 +397,92 @@ test('24h timeseries returns 24 hourly buckets', async () => {
   assert.equal(res.json().series.length, 24);
 });
 
+test('structured field extraction + field filter', async () => {
+  // Ingest an nginx access line and a key=value line.
+  await app.inject({
+    method: 'POST', url: '/api/v1/ingest',
+    headers: { authorization: `Bearer ${agentToken}` },
+    payload: { entries: [
+      { source: 'nginx', service: 'nginx', message: '203.0.113.5 - - [10/Jun/2026:12:00:00 +0000] "GET /health HTTP/1.1" 503 12 "-" "curl/8"' },
+      { source: 'app', message: 'request_id=abc123 status=500 user=bob' },
+    ] },
+  });
+  // Field filter status=503 should find the nginx line.
+  const res = await app.inject({
+    method: 'GET', url: '/api/v1/logs?field=status&fieldval=503',
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  assert.equal(res.statusCode, 200);
+  const logs = res.json().logs;
+  assert.ok(logs.length >= 1, 'expected a log with status=503');
+  assert.equal(logs[0].fields.status, '503');
+  assert.equal(logs[0].fields.method, 'GET');
+});
+
+test('raw ingest accepts plain text and ndjson', async () => {
+  const plain = await app.inject({
+    method: 'POST', url: '/api/v1/ingest/raw?source=vector',
+    headers: { authorization: `Bearer ${agentToken}`, 'content-type': 'text/plain' },
+    payload: 'line one from vector\nline two from vector',
+  });
+  assert.equal(plain.statusCode, 202);
+  assert.equal(plain.json().accepted, 2);
+
+  const nd = await app.inject({
+    method: 'POST', url: '/api/v1/ingest/raw',
+    headers: { authorization: `Bearer ${agentToken}`, 'content-type': 'application/x-ndjson' },
+    payload: '{"message":"ndjson err","level":"error","source":"fluentbit"}\n{"message":"ndjson ok"}',
+  });
+  assert.equal(nd.statusCode, 202);
+  assert.equal(nd.json().accepted, 2);
+});
+
+test('host metrics are accepted and surfaced on server detail', async () => {
+  const m = await app.inject({
+    method: 'POST', url: '/api/v1/metrics',
+    headers: { authorization: `Bearer ${agentToken}`, 'content-type': 'application/json' },
+    payload: { cpu: 12.5, mem: 40.2, disk: 55.1, load1: 0.3, uptime: 1000 },
+  });
+  assert.equal(m.statusCode, 202);
+  const detail = await app.inject({
+    method: 'GET', url: `/api/v1/servers/${serverId}`,
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  const metrics = detail.json().metrics;
+  assert.ok(Array.isArray(metrics) && metrics.length >= 1);
+  assert.equal(metrics[metrics.length - 1].disk, 55.1);
+});
+
+test('new alert channel types validate (slack)', async () => {
+  const res = await app.inject({
+    method: 'POST', url: '/api/v1/channels',
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: { name: 'Slack ops', type: 'slack', config: { webhook_url: 'https://hooks.slack.com/services/x/y/z' } },
+  });
+  assert.equal(res.statusCode, 201);
+});
+
+test('rule accepts quiet_hours and alert can be acknowledged', async () => {
+  const rule = await app.inject({
+    method: 'POST', url: '/api/v1/rules',
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: { name: 'Quiet test', match_type: 'keyword', pattern: 'zzz', quiet_hours: '22-7' },
+  });
+  assert.equal(rule.statusCode, 201);
+  const events = await app.inject({
+    method: 'GET', url: '/api/v1/alerts/events?limit=1',
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  const ev = events.json()[0];
+  if (ev) {
+    const ack = await app.inject({
+      method: 'POST', url: `/api/v1/alerts/events/${ev.id}/ack`,
+      headers: { authorization: `Bearer ${userToken}`, 'content-type': 'application/json' }, payload: {},
+    });
+    assert.equal(ack.statusCode, 200);
+  }
+});
+
 test('agent install script is served publicly', async () => {
   const res = await app.inject({ method: 'GET', url: '/agent/install.sh' });
   assert.equal(res.statusCode, 200);

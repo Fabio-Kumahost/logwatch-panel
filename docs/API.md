@@ -69,6 +69,28 @@ server-side (syslog severities, journald PRIORITY and common words are mapped).
 
 ### `POST /api/v1/heartbeat` *(agent token)* → keeps the server marked online when idle.
 
+### `POST /api/v1/ingest/raw` *(agent token)* — foreign sources
+For Vector, Fluent Bit, rsyslog (omhttp), OTel collectors. Body:
+- `text/plain` — one log line per row
+- `application/x-ndjson` — one JSON object per row
+- `application/json` — a single object or array
+
+Defaults via query: `?source=…&service=…`. Example (rsyslog/Vector):
+```bash
+curl -X POST "$PANEL/api/v1/ingest/raw?source=syslog" \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: text/plain' \
+  --data-binary $'line one\nline two'
+```
+
+### `POST /api/v1/metrics` *(agent token)* — host resource metrics
+`{ cpu, mem, disk, load1, uptime }` (percentages 0–100). Stored for the server
+detail charts; built-in alerts fire at disk ≥ 90% / mem ≥ 95%.
+
+### UDP syslog listener (optional)
+Set `SYSLOG_UDP_PORT` (e.g. 5514). Incoming RFC3164/5424 messages are mapped to a
+server by **source IP** (`ingest_ip`, set when creating a server). No per-message
+auth — only known IPs are accepted.
+
 ---
 
 ## Logs (query)
@@ -87,6 +109,7 @@ Query params (all optional):
 | `limit`     | 1–1000 (default 200) |
 | `offset`    | pagination |
 | `sort`      | `desc` (default, newest first) or `asc` |
+| `field` + `fieldval` | filter on an extracted structured field (e.g. `field=status&fieldval=500`) |
 
 → `{ "logs": [ … ], "limit": 200, "offset": 0 }`
 

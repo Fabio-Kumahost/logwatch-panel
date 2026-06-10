@@ -30,6 +30,34 @@ function ensureColumn(table, column, definition) {
 }
 ensureColumn('users', 'totp_secret', 'TEXT');
 ensureColumn('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
+// v1.5: structured fields, syslog source mapping, alert ack, rule quiet hours.
+ensureColumn('logs', 'fields', 'TEXT');
+ensureColumn('servers', 'ingest_ip', 'TEXT');
+ensureColumn('alert_events', 'acknowledged', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('alert_events', 'acknowledged_by', 'TEXT');
+ensureColumn('rules', 'quiet_hours', 'TEXT');
+
+// v1.5: older databases have a restrictive CHECK on channels.type that rejects
+// the new channel types (slack/teams/pagerduty/opsgenie). Rebuild without it.
+const chSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='channels'").get();
+if (chSql && /CHECK\s*\(\s*type/i.test(chSql.sql)) {
+  const rebuild = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE channels_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, type TEXT NOT NULL, config TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+      );
+      INSERT INTO channels_new(id,name,type,config,enabled,created_at)
+        SELECT id,name,type,config,enabled,created_at FROM channels;
+      DROP TABLE channels;
+      ALTER TABLE channels_new RENAME TO channels;`);
+  });
+  db.pragma('foreign_keys = OFF');
+  rebuild();
+  db.pragma('foreign_keys = ON');
+}
 
 export function getSetting(key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);

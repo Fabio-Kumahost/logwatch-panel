@@ -28,6 +28,13 @@ type Config struct {
 	// BackfillLines ships the last N existing lines per source on the very
 	// first run (0 in config = default 300, negative = disabled).
 	BackfillLines int `json:"backfill_lines"`
+	// Metrics enables host resource reporting (CPU/RAM/disk). nil = enabled.
+	Metrics *bool `json:"metrics"`
+}
+
+// MetricsEnabled treats a missing metrics key as "on".
+func (c *Config) MetricsEnabled() bool {
+	return c.Metrics == nil || *c.Metrics
 }
 
 // AutoUpdateEnabled treats a missing auto_update key as "on".
