@@ -1,0 +1,26 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Panel runtime data (database lives here)
+panel/data/
+*.db
+*.db-wal
+*.db-shm
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local env overrides (committed example: panel/config.env.example)
+config.env
+.env
+
+# Go build cache artifacts (we DO commit agent-bin/ release binaries)
+agent/logwatch-agent
+
+# Ruflo / claude-flow local state
+.claude-flow/
+.swarm/
