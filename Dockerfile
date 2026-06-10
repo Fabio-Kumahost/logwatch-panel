@@ -1,5 +1,5 @@
 # LogWatch Panel container image.
-FROM node:20-bookworm-slim
+FROM node:26-bookworm-slim
 
 # Build tools for better-sqlite3 (only used if a prebuilt binary isn't available).
 RUN apt-get update \
