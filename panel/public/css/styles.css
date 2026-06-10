@@ -126,6 +126,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   padding: 7px 12px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 12.5px;
   align-items: baseline;
 }
+.log-row[data-id] { cursor: pointer; }
 .log-row:hover { background: var(--bg-elev2); }
 .log-row:last-child { border-bottom: none; }
 .log-row .msg { white-space: pre-wrap; word-break: break-word; color: var(--text); }

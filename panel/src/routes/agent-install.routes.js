@@ -18,6 +18,18 @@ const binDir = resolve(__dirname, '../../', config.agentBinDir);
 const BIN_RE = /^logwatch-agent-(linux)-(amd64|arm64|armv7|386)$/;
 
 export default async function agentInstallRoutes(app) {
+  // Version of the agent binaries this panel distributes (written by `make
+  // agent-all`). Public: agents poll it for self-updates before authenticating.
+  app.get('/api/v1/agent/version', async (request, reply) => {
+    try {
+      const version = (await readFile(join(binDir, 'VERSION'), 'utf8')).trim();
+      if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('malformed');
+      return { version };
+    } catch {
+      return reply.code(404).send({ error: 'agent version unknown (agent-bin/VERSION missing)' });
+    }
+  });
+
   app.get('/agent/install.sh', async (request, reply) => {
     try {
       let script = await readFile(scriptPath, 'utf8');

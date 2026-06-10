@@ -22,6 +22,17 @@ type Config struct {
 	Docker          bool     `json:"docker"`
 	Files           []string `json:"files"`   // optional explicit globs (empty = auto-discover)
 	Exclude         []string `json:"exclude"` // optional regex patterns to drop
+	// AutoUpdate lets the agent replace itself with the panel's latest binary.
+	// nil (absent in config) means enabled.
+	AutoUpdate *bool `json:"auto_update"`
+	// BackfillLines ships the last N existing lines per source on the very
+	// first run (0 in config = default 300, negative = disabled).
+	BackfillLines int `json:"backfill_lines"`
+}
+
+// AutoUpdateEnabled treats a missing auto_update key as "on".
+func (c *Config) AutoUpdateEnabled() bool {
+	return c.AutoUpdate == nil || *c.AutoUpdate
 }
 
 // Load reads and validates the config file, applying sensible defaults.
@@ -48,6 +59,12 @@ func Load(path string) (*Config, error) {
 	}
 	if c.BufferDir == "" {
 		c.BufferDir = "/var/lib/logwatch-agent/buffer"
+	}
+	if c.BackfillLines == 0 {
+		c.BackfillLines = 300
+	}
+	if c.BackfillLines < 0 {
+		c.BackfillLines = 0
 	}
 	if c.Hostname == "" {
 		if h, err := os.Hostname(); err == nil {

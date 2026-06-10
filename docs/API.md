@@ -86,6 +86,7 @@ Query params (all optional):
 | `from`,`to` | unix-second time range |
 | `limit`     | 1–1000 (default 200) |
 | `offset`    | pagination |
+| `sort`      | `desc` (default, newest first) or `asc` |
 
 → `{ "logs": [ … ], "limit": 200, "offset": 0 }`
 
@@ -139,3 +140,8 @@ purged in background chunks so large histories never block the panel.
 ## Agent distribution (public, no auth)
 - `GET /agent/install.sh` — the installer script.
 - `GET /agent/download/logwatch-agent-linux-<amd64|arm64|armv7|386>` — agent binary.
+- `GET /api/v1/agent/version` — version of the distributed agent binaries.
+  Agents poll this hourly and **self-update**: they download the new binary,
+  verify it (`--version`), atomically replace themselves and exit so systemd
+  restarts the new version. Disable per server with `"auto_update": false` in
+  `/etc/logwatch-agent/config.json`.

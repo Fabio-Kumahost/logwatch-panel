@@ -7,7 +7,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"syscall"
 	"time"
@@ -49,18 +51,56 @@ func main() {
 
 	entries := make(chan model.Entry, 4096)
 
+	// Backfill recent history only on the very first run (marker file).
+	backfill := cfg.BackfillLines
+	marker := filepath.Join(cfg.BufferDir, ".backfill-done")
+	if _, err := os.Stat(marker); err == nil {
+		backfill = 0
+	}
+
 	// Start collectors based on what the host actually provides.
-	fc := collector.NewFileCollector(cfg.Files, cfg.Hostname, entries)
+	fc := collector.NewFileCollector(cfg.Files, cfg.Hostname, backfill, entries)
 	go fc.Run(ctx)
-	log.Printf("file collector started (%d files discovered)", len(discovery.Files(cfg.Files)))
+	log.Printf("file collector started (%d files discovered, backfill=%d)", len(discovery.Files(cfg.Files)), backfill)
 
 	if cfg.Journal && discovery.HasJournal() {
-		go collector.NewJournalCollector(cfg.Hostname, entries).Run(ctx)
+		go collector.NewJournalCollector(cfg.Hostname, backfill*3, entries).Run(ctx)
 		log.Printf("journal collector started")
 	}
 	if cfg.Docker && discovery.HasDocker() {
-		go collector.NewDockerCollector(cfg.Hostname, entries).Run(ctx)
+		go collector.NewDockerCollector(cfg.Hostname, backfill, entries).Run(ctx)
 		log.Printf("docker collector started")
+	}
+	if backfill > 0 {
+		_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o640)
+	}
+
+	// Periodic self-update against the panel's distributed agent version.
+	if cfg.AutoUpdateEnabled() {
+		go func() {
+			delay := time.NewTimer(2 * time.Minute)
+			defer delay.Stop()
+			select {
+			case <-ctx.Done():
+				return
+			case <-delay.C:
+			}
+			tick := time.NewTicker(time.Hour)
+			defer tick.Stop()
+			for {
+				if updated, err := snd.SelfUpdate(version.Version); err != nil {
+					log.Printf("self-update check: %v", err)
+				} else if updated {
+					log.Printf("agent updated — exiting so systemd restarts the new binary")
+					os.Exit(0)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+				}
+			}
+		}()
 	}
 
 	log.Printf("logwatch-agent %s shipping to %s every %ds", version.Version, cfg.PanelURL, cfg.IntervalSeconds)

@@ -13,6 +13,7 @@ const querySchema = z.object({
   to: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().min(1).max(1000).default(200),
   offset: z.coerce.number().int().min(0).default(0),
+  sort: z.enum(['asc', 'desc']).default('desc'),
 });
 
 // Turn free text into a safe FTS5 MATCH expression (AND of quoted tokens).
@@ -52,6 +53,7 @@ export default async function logRoutes(app) {
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const dir = f.sort === 'asc' ? 'ASC' : 'DESC'; // validated enum, not user SQL
     const rows = db
       .prepare(
         `SELECT logs.id, logs.server_id, logs.ts, logs.received_at, logs.source,
@@ -60,12 +62,12 @@ export default async function logRoutes(app) {
          FROM ${from}
          LEFT JOIN servers ON servers.id = logs.server_id
          ${whereSql}
-         ORDER BY logs.ts DESC, logs.id DESC
+         ORDER BY logs.ts ${dir}, logs.id ${dir}
          LIMIT ? OFFSET ?`
       )
       .all(...params, f.limit, f.offset);
 
-    return { logs: rows, limit: f.limit, offset: f.offset };
+    return { logs: rows, limit: f.limit, offset: f.offset, sort: f.sort };
   });
 
   // Distinct values to populate filter dropdowns in the UI.

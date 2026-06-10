@@ -1,4 +1,5 @@
-import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo } from '/js/api.js?v=1.2.0';
+import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo } from '/js/api.js?v=1.3.0';
+import { suggestFix } from '/js/solutions.js?v=1.3.0';
 
 const root = document.getElementById('root');
 let me = null;
@@ -100,7 +101,12 @@ async function renderDashboard() {
   shell('/dashboard', `<div id="updateBanner"></div><div class="page-head"><h2>Dashboard</h2></div><div id="dash">Loading…</div>`);
   renderUpdateBanner();
   try {
-    const [servers, stats] = await Promise.all([api('/api/v1/servers'), api('/api/v1/logs/stats')]);
+    const [servers, stats, agentVer] = await Promise.all([
+      api('/api/v1/servers'),
+      api('/api/v1/logs/stats'),
+      api('/api/v1/agent/version').catch(() => null),
+    ]);
+    window._agentLatest = agentVer?.version || null;
     const online = servers.filter((s) => s.status === 'online').length;
     const byLevel = Object.fromEntries((stats.last24h || []).map((r) => [r.level, r.n]));
     const dash = document.getElementById('dash');
@@ -184,7 +190,11 @@ function serverCard(s) {
     </div>
     <div class="server-meta">
       <div>OS: ${esc(s.os || '—')} ${esc(s.os_version || '')}</div>
-      <div>Agent: ${esc(s.agent_version || '—')}</div>
+      <div>Agent: ${esc(s.agent_version || '—')}${
+        window._agentLatest && s.agent_version && s.agent_version !== window._agentLatest
+          ? ` <span title="Update to ${esc(window._agentLatest)} available — agent self-updates within 1h">⬆️</span>`
+          : ''
+      }</div>
       <div>Last log: ${fmtAgo(s.last_log)}</div>
       <div>Last seen: ${fmtAgo(s.last_seen)}</div>
     </div>
@@ -277,6 +287,10 @@ async function renderLogs() {
       <select id="server_id"><option value="">All servers</option></select>
       <select id="level"><option value="">Any level</option></select>
       <select id="source"><option value="">Any source</option></select>
+      <select id="sortDir">
+        <option value="desc">Newest first</option>
+        <option value="asc">Oldest first</option>
+      </select>
       <button class="btn" id="searchBtn">Search</button>
     </div>
     <div class="log-list" id="logList"><div style="padding:14px" class="dim">Loading…</div></div>`);
@@ -290,6 +304,7 @@ async function renderLogs() {
   async function doSearch() {
     const params = new URLSearchParams();
     for (const k of ['q', 'server_id', 'level', 'source']) { const v = sel(k).value.trim(); if (v) params.set(k, v); }
+    params.set('sort', sel('sortDir').value);
     params.set('limit', '300');
     try {
       const { logs } = await api(`/api/v1/logs?${params}`);
@@ -297,7 +312,16 @@ async function renderLogs() {
     } catch (err) { toast(err.message, 'error'); }
   }
   sel('searchBtn').onclick = doSearch;
+  sel('sortDir').onchange = doSearch;
   sel('q').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+
+  // Click a row to open the detail view with a suggested fix.
+  document.getElementById('logList').addEventListener('click', (e) => {
+    const row = e.target.closest('.log-row[data-id]');
+    if (!row) return;
+    const entry = window._logMap?.get(row.dataset.id);
+    if (entry) logDetailModal(entry);
+  });
 
   document.getElementById('liveBtn').onclick = () => toggleLive(servers);
   doSearch();
@@ -305,7 +329,9 @@ async function renderLogs() {
 
 function logRowHtml(l) {
   const lvl = l.level || 'info';
-  return `<div class="log-row">
+  if (!window._logMap) window._logMap = new Map();
+  if (l.id != null) window._logMap.set(String(l.id), l);
+  return `<div class="log-row" data-id="${l.id ?? ''}" title="Click for details & suggested fix">
     <span class="ts">${fmtTime(l.ts)}</span>
     <span><span class="badge lvl-${lvl}">${lvl}</span></span>
     <span class="src" title="${esc(l.source)}">${esc(l.source || '')}</span>
@@ -314,8 +340,36 @@ function logRowHtml(l) {
   </div>`;
 }
 function renderLogRows(logs) {
+  window._logMap = new Map();
   const head = `<div class="log-row log-head"><span>Time</span><span>Level</span><span>Source</span><span>Service</span><span>Message</span></div>`;
   document.getElementById('logList').innerHTML = head + (logs.length ? logs.map(logRowHtml).join('') : '<div style="padding:14px" class="dim">No matching logs.</div>');
+}
+
+// Detail view for a single log entry, including a suggested fix when the
+// message matches a known error pattern.
+function logDetailModal(l) {
+  const fix = suggestFix(l);
+  const fixHtml = fix
+    ? `<div class="card" style="margin-top:12px;border-color:var(--accent)">
+        <b>💡 ${esc(fix.title)}</b>
+        <div class="dim" style="margin:4px 0 8px">${esc(fix.why)}</div>
+        <ol style="margin:0;padding-left:18px">${fix.steps.map((s) => `<li style="margin-bottom:4px"><span class="mono">${esc(s)}</span></li>`).join('')}</ol>
+      </div>`
+    : `<div class="dim" style="margin-top:12px">No specific suggestion for this entry.</div>`;
+  modal(`<h3>Log entry</h3>
+    <div class="server-meta" style="margin-bottom:8px">
+      <div><b>Time:</b> ${fmtTime(l.ts)}</div>
+      <div><b>Server:</b> ${esc(l.server_name || l.host || '—')}</div>
+      <div><b>Source:</b> ${esc(l.source || '—')} · <b>Service:</b> ${esc(l.service || '—')}</div>
+      <div><b>Level:</b> <span class="badge lvl-${l.level || 'info'}">${esc(l.level || 'info')}</span></div>
+    </div>
+    <div class="code-box">${esc(l.message)}</div>
+    ${fixHtml}
+    <div class="row" style="margin-top:12px">
+      <button class="btn secondary sm" id="copyMsg">Copy message</button>
+      <button class="btn" onclick="LW.closeModal()">Close</button>
+    </div>`);
+  document.getElementById('copyMsg').onclick = () => { navigator.clipboard.writeText(l.message); toast('Copied', 'success'); };
 }
 
 function toggleLive() {

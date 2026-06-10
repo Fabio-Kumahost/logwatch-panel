@@ -276,6 +276,26 @@ test('one-click update apply returns 409 with fallback when updater unit absent'
   assert.match(res.json().update_command, /update\.sh/);
 });
 
+test('logs can be sorted ascending and descending', async () => {
+  const get = async (sort) =>
+    (await app.inject({
+      method: 'GET',
+      url: `/api/v1/logs?sort=${sort}&limit=50`,
+      headers: { authorization: `Bearer ${userToken}` },
+    })).json().logs;
+  const desc = await get('desc');
+  const asc = await get('asc');
+  assert.ok(desc.length >= 2 && asc.length >= 2);
+  for (let i = 1; i < desc.length; i++) assert.ok(desc[i - 1].ts >= desc[i].ts, 'desc order broken');
+  for (let i = 1; i < asc.length; i++) assert.ok(asc[i - 1].ts <= asc[i].ts, 'asc order broken');
+});
+
+test('panel reports the distributed agent version', async () => {
+  const res = await app.inject({ method: 'GET', url: '/api/v1/agent/version' });
+  assert.equal(res.statusCode, 200);
+  assert.match(res.json().version, /^\d+\.\d+\.\d+$/);
+});
+
 test('agent install script is served publicly', async () => {
   const res = await app.inject({ method: 'GET', url: '/agent/install.sh' });
   assert.equal(res.statusCode, 200);

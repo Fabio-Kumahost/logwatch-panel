@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -20,13 +21,14 @@ import (
 type FileCollector struct {
 	explicit []string
 	host     string
+	backfill int // ship the last N existing lines per file on first run
 	out      chan<- model.Entry
 	mu       sync.Mutex
 	active   map[string]context.CancelFunc
 }
 
-func NewFileCollector(explicit []string, host string, out chan<- model.Entry) *FileCollector {
-	return &FileCollector{explicit: explicit, host: host, out: out, active: map[string]context.CancelFunc{}}
+func NewFileCollector(explicit []string, host string, backfill int, out chan<- model.Entry) *FileCollector {
+	return &FileCollector{explicit: explicit, host: host, backfill: backfill, out: out, active: map[string]context.CancelFunc{}}
 }
 
 // Run periodically rescans for log files and tails any new ones until ctx ends.
@@ -106,6 +108,11 @@ func (c *FileCollector) tail(ctx context.Context, path string) {
 		return true
 	}
 
+	// First run: ship the most recent existing lines so the panel has history.
+	if c.backfill > 0 {
+		c.emitBackfill(ctx, path, source, service)
+	}
+
 	// Start at EOF so we only ship new lines, not the entire historical file.
 	open(false)
 
@@ -172,6 +179,47 @@ func (c *FileCollector) tail(ctx context.Context, path string) {
 			f.Close()
 			f = nil
 		}
+	}
+}
+
+// emitBackfill ships the last N lines of an existing file (reads at most the
+// final 256KB so huge logs stay cheap).
+func (c *FileCollector) emitBackfill(ctx context.Context, path, source, service string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return
+	}
+	const window = int64(256 * 1024)
+	off := fi.Size() - window
+	if off < 0 {
+		off = 0
+	}
+	if _, err := f.Seek(off, io.SeekStart); err != nil {
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(f, window))
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	if off > 0 && len(lines) > 0 {
+		lines = lines[1:] // drop the partial first line
+	}
+	if len(lines) > c.backfill {
+		lines = lines[len(lines)-c.backfill:]
+	}
+	now := time.Now().Unix()
+	for _, ln := range lines {
+		ln = trimNewline(ln)
+		if ln == "" {
+			continue
+		}
+		c.emit(ctx, model.Entry{Ts: now, Source: source, Service: service, Host: c.host, Message: ln})
 	}
 }
 

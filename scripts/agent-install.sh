@@ -26,7 +26,7 @@ BIN_PATH="/usr/local/bin/logwatch-agent"
 CONF_DIR="/etc/logwatch-agent"
 CONF_FILE="${CONF_DIR}/config.json"
 STATE_DIR="/var/lib/logwatch-agent"
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 log()  { printf '\033[0;36m[logwatch]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[0;32m[ ok ]\033[0m %s\n' "$*"; }
@@ -178,10 +178,15 @@ write_config() {
   "insecure_tls": ${INSECURE},
   "journal": true,
   "docker": true,
+  "auto_update": true,
+  "backfill_lines": 300,
   "files": [],
   "exclude": []
 }
 EOF
+  # The agent must own its binary so auto-update can replace it (no privilege
+  # gain: the binary already runs as this same user).
+  chown "$RUNTIME_USER":"$RUNTIME_GROUP" "$BIN_PATH" 2>/dev/null || true
   chown -R "$RUNTIME_USER":"$RUNTIME_GROUP" "$STATE_DIR" 2>/dev/null || true
   # The agent runs as $RUNTIME_USER, so it must own (and be able to read) its
   # config, which holds the token. Keep it readable only by that user.
@@ -211,6 +216,8 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=${STATE_DIR}
+# /usr/local/bin so the agent can self-update its own binary.
+ReadWritePaths=/usr/local/bin
 ReadOnlyPaths=/var/log
 ProtectKernelTunables=true
 ProtectControlGroups=true

@@ -13,12 +13,13 @@ import (
 
 // JournalCollector streams the systemd journal as JSON via `journalctl -f`.
 type JournalCollector struct {
-	host string
-	out  chan<- model.Entry
+	host     string
+	backfill int // dump the last N journal entries on first run
+	out      chan<- model.Entry
 }
 
-func NewJournalCollector(host string, out chan<- model.Entry) *JournalCollector {
-	return &JournalCollector{host: host, out: out}
+func NewJournalCollector(host string, backfill int, out chan<- model.Entry) *JournalCollector {
+	return &JournalCollector{host: host, backfill: backfill, out: out}
 }
 
 // journald PRIORITY (syslog severity) -> our level names.
@@ -28,6 +29,10 @@ var prioLevel = map[string]string{
 }
 
 func (c *JournalCollector) Run(ctx context.Context) {
+	if c.backfill > 0 {
+		c.dump(ctx)
+		c.backfill = 0
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -40,6 +45,41 @@ func (c *JournalCollector) Run(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// dump emits the most recent journal entries once (first-run backfill).
+func (c *JournalCollector) dump(ctx context.Context) {
+	cmd := exec.CommandContext(ctx, "journalctl", "-n", strconv.Itoa(c.backfill), "-o", "json", "--no-pager")
+	out, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	for _, line := range splitLines(out) {
+		if entry := c.parse(line); entry != nil {
+			select {
+			case c.out <- *entry:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+func splitLines(b []byte) [][]byte {
+	var out [][]byte
+	start := 0
+	for i := 0; i < len(b); i++ {
+		if b[i] == '\n' {
+			if i > start {
+				out = append(out, b[start:i])
+			}
+			start = i + 1
+		}
+	}
+	if start < len(b) {
+		out = append(out, b[start:])
+	}
+	return out
 }
 
 func (c *JournalCollector) stream(ctx context.Context) {

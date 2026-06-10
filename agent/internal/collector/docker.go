@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,14 +14,15 @@ import (
 
 // DockerCollector tails logs of all running containers, picking up new ones.
 type DockerCollector struct {
-	host   string
-	out    chan<- model.Entry
-	mu     sync.Mutex
-	active map[string]context.CancelFunc
+	host     string
+	backfill int // include the last N container log lines on first run
+	out      chan<- model.Entry
+	mu       sync.Mutex
+	active   map[string]context.CancelFunc
 }
 
-func NewDockerCollector(host string, out chan<- model.Entry) *DockerCollector {
-	return &DockerCollector{host: host, out: out, active: map[string]context.CancelFunc{}}
+func NewDockerCollector(host string, backfill int, out chan<- model.Entry) *DockerCollector {
+	return &DockerCollector{host: host, backfill: backfill, out: out, active: map[string]context.CancelFunc{}}
 }
 
 func (c *DockerCollector) Run(ctx context.Context) {
@@ -63,8 +65,12 @@ func (c *DockerCollector) tail(ctx context.Context, name string) {
 		delete(c.active, name)
 		c.mu.Unlock()
 	}()
-	// --tail 0 = only new lines; combine stdout+stderr (default).
-	cmd := exec.CommandContext(ctx, "docker", "logs", "-f", "--tail", "0", "--timestamps", name)
+	// --tail 0 = only new lines (first run backfills the recent tail).
+	tailArg := "0"
+	if c.backfill > 0 {
+		tailArg = strconv.Itoa(c.backfill)
+	}
+	cmd := exec.CommandContext(ctx, "docker", "logs", "-f", "--tail", tailArg, "--timestamps", name)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return

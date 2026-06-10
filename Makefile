@@ -1,4 +1,4 @@
-VERSION ?= 1.0.0
+VERSION ?= 1.1.0
 LDFLAGS := -s -w -X github.com/Fabio-Kumahost/logwatch-panel/agent/internal/version.Version=$(VERSION)
 BIN_DIR := agent-bin
 
@@ -17,7 +17,8 @@ agent-all:
 	cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../$(BIN_DIR)/logwatch-agent-linux-arm64 .
 	cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "$(LDFLAGS)" -o ../$(BIN_DIR)/logwatch-agent-linux-armv7 .
 	cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -trimpath -ldflags "$(LDFLAGS)" -o ../$(BIN_DIR)/logwatch-agent-linux-386 .
-	@echo "built agent binaries in $(BIN_DIR)/"
+	@echo "$(VERSION)" > $(BIN_DIR)/VERSION
+	@echo "built agent binaries $(VERSION) in $(BIN_DIR)/"
 
 # Run the panel test suite.
 panel-test test:
