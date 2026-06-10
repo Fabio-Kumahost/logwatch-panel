@@ -1,5 +1,5 @@
 VERSION ?= 1.0.0
-LDFLAGS := -s -w -X github.com/fabioagostinho/logwatch-panel/agent/internal/version.Version=$(VERSION)
+LDFLAGS := -s -w -X github.com/Fabio-Kumahost/logwatch-panel/agent/internal/version.Version=$(VERSION)
 BIN_DIR := agent-bin
 
 .PHONY: all agent agent-all test clean panel-test

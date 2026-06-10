@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/config"
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/model"
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/version"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/config"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/model"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/version"
 )
 
 type Sender struct {

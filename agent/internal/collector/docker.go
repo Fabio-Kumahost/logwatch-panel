@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/model"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/model"
 )
 
 // DockerCollector tails logs of all running containers, picking up new ones.

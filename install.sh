@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # LogWatch Panel installer.
 #
-#   bash <(curl -sSL https://raw.githubusercontent.com/fabioagostinho/logwatch-panel/main/install.sh)
+#   bash <(curl -sSL https://raw.githubusercontent.com/Fabio-Kumahost/logwatch-panel/main/install.sh)
 #
 # Non-interactive overrides (env vars):
 #   LW_NONINTERACTIVE=1  LW_DOMAIN=panel.example.com  LW_SSL_EMAIL=me@x.com
 #   LW_ADMIN_USER=admin  LW_ADMIN_PASS=secret  LW_PORT=8088
 set -euo pipefail
 
-REPO="https://github.com/fabioagostinho/logwatch-panel.git"
+REPO="https://github.com/Fabio-Kumahost/logwatch-panel.git"
 BRANCH="main"
 INSTALL_DIR="/opt/logwatch-panel"
 CONF_DIR="/etc/logwatch-panel"

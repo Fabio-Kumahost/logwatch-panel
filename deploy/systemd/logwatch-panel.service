@@ -1,6 +1,6 @@
 [Unit]
 Description=LogWatch Panel
-Documentation=https://github.com/fabioagostinho/logwatch-panel
+Documentation=https://github.com/Fabio-Kumahost/logwatch-panel
 After=network-online.target
 Wants=network-online.target
 

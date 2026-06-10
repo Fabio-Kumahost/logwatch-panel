@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/model"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/model"
 )
 
 // JournalCollector streams the systemd journal as JSON via `journalctl -f`.

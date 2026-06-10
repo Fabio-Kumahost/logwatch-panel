@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/discovery"
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/model"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/discovery"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/model"
 )
 
 // FileCollector tails a dynamic set of log files, following rotation/truncation.

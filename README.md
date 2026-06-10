@@ -73,7 +73,7 @@ Fedora · Arch Linux · openSUSE · Alpine Linux
 Install the panel on a Debian/Ubuntu VPS (other distros are auto-detected too):
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/fabioagostinho/logwatch-panel/main/install.sh)
+bash <(curl -sSL https://raw.githubusercontent.com/Fabio-Kumahost/logwatch-panel/main/install.sh)
 ```
 
 The installer will:
@@ -89,7 +89,7 @@ The installer will:
 ```bash
 LW_NONINTERACTIVE=1 LW_DOMAIN=panel.example.com LW_SSL=y LW_SSL_EMAIL=me@example.com \
 LW_ADMIN_USER=admin LW_ADMIN_PASS='ChangeMe123!' \
-bash <(curl -sSL https://raw.githubusercontent.com/fabioagostinho/logwatch-panel/main/install.sh)
+bash <(curl -sSL https://raw.githubusercontent.com/Fabio-Kumahost/logwatch-panel/main/install.sh)
 ```
 
 ## Connect a server

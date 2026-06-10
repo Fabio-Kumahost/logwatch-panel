@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/buffer"
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/collector"
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/config"
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/discovery"
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/model"
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/sender"
-	"github.com/fabioagostinho/logwatch-panel/agent/internal/version"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/buffer"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/collector"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/config"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/discovery"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/model"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/sender"
+	"github.com/Fabio-Kumahost/logwatch-panel/agent/internal/version"
 )
 
 func main() {

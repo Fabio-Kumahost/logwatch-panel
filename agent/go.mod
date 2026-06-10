@@ -1,3 +1,3 @@
-module github.com/fabioagostinho/logwatch-panel/agent
+module github.com/Fabio-Kumahost/logwatch-panel/agent
 
 go 1.21
