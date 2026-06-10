@@ -14,7 +14,7 @@
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {
-    "@fastify/jwt": "^9.0.1",
+    "@fastify/jwt": "^10.1.0",
     "@fastify/rate-limit": "^10.1.1",
     "@fastify/static": "^8.0.3",
     "@fastify/websocket": "^11.0.1",
