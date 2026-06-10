@@ -483,6 +483,74 @@ test('rule accepts quiet_hours and alert can be acknowledged', async () => {
   }
 });
 
+test('log clustering groups similar lines into patterns', async () => {
+  // Three lines that differ only in numbers/IPs should collapse to one pattern.
+  await app.inject({
+    method: 'POST', url: '/api/v1/ingest',
+    headers: { authorization: `Bearer ${agentToken}` },
+    payload: { entries: [
+      { source: 'app', message: 'request 1001 from 10.0.0.1 took 23ms' },
+      { source: 'app', message: 'request 1002 from 10.0.0.2 took 41ms' },
+      { source: 'app', message: 'request 9999 from 8.8.8.8 took 5ms' },
+    ] },
+  });
+  const res = await app.inject({
+    method: 'GET', url: '/api/v1/logs/patterns?hours=24',
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  assert.equal(res.statusCode, 200);
+  const pats = res.json().patterns;
+  const reqPat = pats.find((p) => /request <NUM> from <IP> took <NUM>ms/.test(p.fp));
+  assert.ok(reqPat, 'expected a clustered request pattern');
+  assert.ok(reqPat.count >= 3, `expected >=3 in cluster, got ${reqPat.count}`);
+});
+
+test('fingerprint normalizes variable parts', async () => {
+  const { fingerprint } = await import('../src/utils/fingerprint.js');
+  assert.equal(
+    fingerprint('User 42 logged in from 1.2.3.4 at 2026-06-10T12:00:00Z'),
+    fingerprint('User 7 logged in from 9.9.9.9 at 2026-06-10T13:30:00Z')
+  );
+});
+
+test('threat sources aggregate external attacker IPs', async () => {
+  await app.inject({
+    method: 'POST', url: '/api/v1/ingest',
+    headers: { authorization: `Bearer ${agentToken}` },
+    payload: { entries: [
+      { source: 'auth', service: 'sshd', message: 'Failed password for invalid user admin from 203.0.113.42 port 5000 ssh2' },
+      { source: 'auth', service: 'sshd', message: 'Failed password for root from 203.0.113.42 port 5001 ssh2' },
+      { source: 'auth', service: 'sshd', message: 'Failed password for root from 192.168.1.10 port 22 ssh2' },
+    ] },
+  });
+  const res = await app.inject({
+    method: 'GET', url: '/api/v1/threats?hours=24',
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  assert.equal(res.statusCode, 200);
+  const top = res.json().top;
+  const attacker = top.find((t) => t.ip === '203.0.113.42');
+  assert.ok(attacker && attacker.suspicious >= 2, 'expected external attacker IP with suspicious hits');
+  assert.ok(!top.some((t) => t.ip === '192.168.1.10'), 'private IPs must be excluded');
+});
+
+test('AI status reports disabled without an API key, explain returns 503', async () => {
+  const status = await app.inject({ method: 'GET', url: '/api/v1/ai/status', headers: { authorization: `Bearer ${userToken}` } });
+  assert.equal(status.statusCode, 200);
+  assert.equal(status.json().enabled, false);
+  const ex = await app.inject({
+    method: 'POST', url: '/api/v1/ai/explain',
+    headers: { authorization: `Bearer ${userToken}`, 'content-type': 'application/json' },
+    payload: { message: 'something broke' },
+  });
+  assert.equal(ex.statusCode, 503);
+});
+
+test('anomaly detection runs without throwing', async () => {
+  const { runOnce } = await import('../src/services/anomaly.js');
+  assert.doesNotThrow(() => runOnce());
+});
+
 test('agent install script is served publicly', async () => {
   const res = await app.inject({ method: 'GET', url: '/agent/install.sh' });
   assert.equal(res.statusCode, 200);

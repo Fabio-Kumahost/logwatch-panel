@@ -1,5 +1,5 @@
-import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo, downloadWithAuth } from '/js/api.js?v=1.5.0';
-import { suggestFix } from '/js/solutions.js?v=1.5.0';
+import { api, getToken, setToken, clearToken, toast, esc, fmtTime, fmtAgo, downloadWithAuth } from '/js/api.js?v=1.6.0';
+import { suggestFix } from '/js/solutions.js?v=1.6.0';
 
 const root = document.getElementById('root');
 let me = null;
@@ -28,6 +28,7 @@ const routes = {
   '/login': renderLogin,
   '/dashboard': renderDashboard,
   '/logs': renderLogs,
+  '/insights': renderInsights,
   '/alerts': renderAlerts,
   '/settings': renderSettings,
 };
@@ -43,6 +44,7 @@ async function router() {
   if (!me) {
     try { me = (await api('/api/v1/auth/me')).user; }
     catch { return renderLogin(); }
+    try { window._ai = await api('/api/v1/ai/status'); } catch { window._ai = { enabled: false }; }
   }
   if (path === '/servers' && param) return renderServerDetail(param);
   const view = routes[path] || renderDashboard;
@@ -58,6 +60,7 @@ function shell(active, contentHtml) {
   const nav = [
     ['/dashboard', '📊 Dashboard'],
     ['/logs', '📜 Logs'],
+    ['/insights', '🧠 Insights'],
     ['/alerts', '🔔 Alerts'],
     ['/settings', '⚙️ Settings'],
   ].map(([h, label]) => `<a href="#${h}" class="${active === h ? 'active' : ''}">${label}</a>`).join('');
@@ -389,6 +392,7 @@ async function renderLogs() {
         <option value="asc">Oldest first</option>
       </select>
       <button class="btn" id="searchBtn">Search</button>
+      <button class="btn secondary" id="aiSearchBtn" title="Natural-language search">✨ Ask</button>
       <button class="btn secondary" id="exportBtn">⭳ CSV</button>
     </div>
     <div class="log-list" id="logList"><div style="padding:14px" class="dim">Loading…</div></div>`);
@@ -417,6 +421,7 @@ async function renderLogs() {
     const params = new URLSearchParams();
     for (const k of ['q', 'server_id', 'level', 'source']) { const v = sel(k).value.trim(); if (v) params.set(k, v); }
     if (fieldFilter) { params.set('field', fieldFilter.field); params.set('fieldval', fieldFilter.fieldval); }
+    if (initial.fp) params.set('fp', initial.fp);
     params.set('sort', sel('sortDir').value);
     params.set('limit', '300');
     try {
@@ -427,6 +432,19 @@ async function renderLogs() {
   sel('searchBtn').onclick = doSearch;
   sel('sortDir').onchange = doSearch;
   sel('q').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+  sel('aiSearchBtn').onclick = async () => {
+    if (!window._ai?.enabled) return toast('AI not configured (set ANTHROPIC_API_KEY on the panel)', 'error');
+    const query = prompt('Ask in plain language, e.g. "failed SSH logins in the last hour"');
+    if (!query) return;
+    try {
+      const { params } = await api('/api/v1/ai/search', { method: 'POST', body: { query } });
+      if (params.q) sel('q').value = params.q;
+      if (params.level) sel('level').value = params.level;
+      if (params.source && [...sel('source').options].some((o) => o.value === params.source)) sel('source').value = params.source;
+      toast('Applied AI filter', 'success');
+      doSearch();
+    } catch (err) { toast(err.message, 'error'); }
+  };
   sel('exportBtn').onclick = () => {
     const params = new URLSearchParams();
     for (const k of ['q', 'server_id', 'level', 'source']) { const v = sel(k).value.trim(); if (v) params.set(k, v); }
@@ -492,9 +510,30 @@ function logDetailModal(l) {
     ${fixHtml}
     <div class="row" style="margin-top:12px">
       <button class="btn secondary sm" id="copyMsg">Copy message</button>
+      ${window._ai?.enabled ? `<button class="btn sm" id="aiExplain">✨ Explain with AI</button>` : ''}
       <button class="btn" onclick="LW.closeModal()">Close</button>
-    </div>`);
+    </div>
+    <div id="aiOut" style="margin-top:12px"></div>`);
   document.getElementById('copyMsg').onclick = () => { navigator.clipboard.writeText(l.message); toast('Copied', 'success'); };
+  const aiBtn = document.getElementById('aiExplain');
+  if (aiBtn) aiBtn.onclick = async () => {
+    aiBtn.disabled = true; aiBtn.textContent = 'Thinking…';
+    const out = document.getElementById('aiOut');
+    out.innerHTML = '<div class="dim">Asking Claude…</div>';
+    try {
+      const r = await api('/api/v1/ai/explain', { method: 'POST', body: l.id ? { id: l.id } : { message: l.message } });
+      out.innerHTML = `<div class="card" style="border-color:var(--accent)">${mdLite(r.explanation)}</div>`;
+    } catch (err) { out.innerHTML = `<div class="dim" style="color:var(--red)">${esc(err.message)}</div>`; }
+    aiBtn.disabled = false; aiBtn.textContent = '✨ Explain with AI';
+  };
+}
+
+// Minimal Markdown → HTML (bold, code, line breaks) for AI output.
+function mdLite(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, '<span class="mono" style="background:var(--bg);padding:1px 4px;border-radius:4px">$1</span>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/\n/g, '<br>');
 }
 
 function toggleLive() {
@@ -518,6 +557,40 @@ function toggleLive() {
     if (headEl) headEl.after(div.firstChild); else list.prepend(div.firstChild);
     while (list.children.length > 400) list.lastChild.remove();
   };
+}
+
+// Insights: log pattern clustering + threat sources -----------------------
+async function renderInsights() {
+  shell('/insights', `<div class="page-head"><h2>Insights</h2><div class="spacer"></div>
+    <select id="insHours"><option value="24">Last 24h</option><option value="6">Last 6h</option><option value="168">Last 7d</option></select></div>
+    <h3>🧩 Top log patterns <span class="dim" style="font-weight:400">— millions of lines grouped into templates</span></h3>
+    <div id="patterns">Loading…</div>
+    <h3 style="margin-top:24px">🌍 Threat sources <span class="dim" style="font-weight:400">— external IPs in auth/access logs</span></h3>
+    <div id="threats">Loading…</div>`);
+  const load = async () => {
+    const hours = document.getElementById('insHours').value;
+    try {
+      const [pat, threats] = await Promise.all([
+        api(`/api/v1/logs/patterns?hours=${hours}`),
+        api(`/api/v1/threats?hours=${hours}`),
+      ]);
+      document.getElementById('patterns').innerHTML = pat.patterns.length ? `<table class="grid">
+        <tr><th>Count</th><th>Level</th><th>Pattern (sample)</th><th>Last</th></tr>
+        ${pat.patterns.map((p) => `<tr style="cursor:pointer" onclick="LW.patternLogs(${JSON.stringify(p.fp).replace(/"/g, '&quot;')})">
+          <td><b>${p.count}</b></td><td><span class="badge lvl-${p.level || 'info'}">${esc(p.level || '')}</span></td>
+          <td class="mono">${esc((p.sample || '').slice(0, 140))}</td><td class="dim">${fmtAgo(p.last_seen)}</td></tr>`).join('')}
+        </table>` : '<div class="dim">No patterns yet.</div>';
+      document.getElementById('threats').innerHTML = threats.top.length ? `<div class="dim" style="margin-bottom:6px">${threats.total_sources} external sources seen.</div>
+        <table class="grid"><tr><th>IP</th><th>Hits</th><th>Suspicious</th><th>Sample</th><th></th></tr>
+        ${threats.top.map((t) => `<tr><td class="mono">${esc(t.ip)}</td><td>${t.count}</td>
+          <td>${t.suspicious ? `<span style="color:var(--red)">${t.suspicious}</span>` : '0'}</td>
+          <td class="mono">${esc((t.sample || '').slice(0, 80))}</td>
+          <td><a class="btn secondary sm" href="#/logs?q=${encodeURIComponent(t.ip)}">Logs</a></td></tr>`).join('')}</table>`
+        : '<div class="dim">No external threat sources detected.</div>';
+    } catch (err) { toast(err.message, 'error'); }
+  };
+  document.getElementById('insHours').onchange = load;
+  load();
 }
 
 // Alerts (rules + channels + events) -------------------------------------
@@ -813,4 +886,5 @@ Object.assign(window.LW, {
   delUser: async (id) => { if (confirm('Delete user?')) { try { await api(`/api/v1/users/${id}/delete`, { method: 'POST' }); renderSettings(); } catch (e) { toast(e.message, 'error'); } } },
   ackAlert: async (id) => { try { await api(`/api/v1/alerts/events/${id}/ack`, { method: 'POST', body: {} }); reloadAlerts(); } catch (e) { toast(e.message, 'error'); } },
   fieldFilter: (k, v) => { closeModal(); location.hash = `#/logs?field=${encodeURIComponent(k)}&fieldval=${encodeURIComponent(v)}`; },
+  patternLogs: (fp) => { location.hash = `#/logs?fp=${encodeURIComponent(fp)}`; },
 });

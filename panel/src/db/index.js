@@ -36,6 +36,8 @@ ensureColumn('servers', 'ingest_ip', 'TEXT');
 ensureColumn('alert_events', 'acknowledged', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('alert_events', 'acknowledged_by', 'TEXT');
 ensureColumn('rules', 'quiet_hours', 'TEXT');
+// v1.6: log pattern fingerprint for clustering / new-error detection.
+ensureColumn('logs', 'fp', 'TEXT');
 
 // v1.5: older databases have a restrictive CHECK on channels.type that rejects
 // the new channel types (slack/teams/pagerduty/opsgenie). Rebuild without it.

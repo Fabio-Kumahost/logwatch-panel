@@ -80,4 +80,7 @@ export const config = {
   // Optional UDP syslog listener (RFC3164/5424). 0 = disabled. Maps incoming
   // by source IP to a server's ingest_ip. Use >1024 unless running as root.
   syslogUdpPort: int('SYSLOG_UDP_PORT', 0),
+  // Optional AI assistant (Claude). Unset key = feature disabled.
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  aiModel: process.env.AI_MODEL || 'claude-opus-4-8',
 };

@@ -13,6 +13,7 @@ const querySchema = z.object({
   to: z.coerce.number().int().optional(),
   field: z.string().max(64).optional(),       // structured field key
   fieldval: z.string().max(256).optional(),   // structured field value
+  fp: z.string().max(400).optional(),         // exact pattern fingerprint
   limit: z.coerce.number().int().min(1).max(1000).default(200),
   offset: z.coerce.number().int().min(0).default(0),
   sort: z.enum(['asc', 'desc']).default('desc'),
@@ -58,6 +59,7 @@ export default async function logRoutes(app) {
       where.push('json_extract(logs.fields, ?) = ?');
       params.push(`$.${f.field}`, f.fieldval ?? '');
     }
+    if (f.fp) { where.push('logs.fp = ?'); params.push(f.fp); }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const dir = f.sort === 'asc' ? 'ASC' : 'DESC'; // validated enum, not user SQL
@@ -136,6 +138,28 @@ export default async function logRoutes(app) {
       series.push({ hour: b * 3600, total: r?.total || 0, errors: r?.errors || 0 });
     }
     return { series };
+  });
+
+  // Log pattern clustering: group recent logs by fingerprint, top patterns first.
+  app.get('/api/v1/logs/patterns', { preHandler: requireUser }, async (request) => {
+    const q = request.query;
+    const hours = Math.min(Math.max(parseInt(q.hours || '24', 10) || 24, 1), 168);
+    const since = Math.floor(Date.now() / 1000) - hours * 3600;
+    const where = ['received_at >= ?', 'fp IS NOT NULL'];
+    const params = [since];
+    if (q.server_id) { where.push('server_id = ?'); params.push(Number(q.server_id)); }
+    if (q.level) {
+      const allowed = LEVELS.filter((l) => LEVEL_RANK[l] >= LEVEL_RANK[q.level]);
+      if (allowed.length) { where.push(`level IN (${allowed.map(() => '?').join(',')})`); params.push(...allowed); }
+    }
+    const rows = db.prepare(
+      `SELECT fp, COUNT(*) AS count, MAX(received_at) AS last_seen, MIN(received_at) AS first_seen,
+              (SELECT message FROM logs l2 WHERE l2.fp = logs.fp ORDER BY l2.received_at DESC LIMIT 1) AS sample,
+              (SELECT level FROM logs l3 WHERE l3.fp = logs.fp ORDER BY l3.received_at DESC LIMIT 1) AS level
+       FROM logs WHERE ${where.join(' AND ')}
+       GROUP BY fp ORDER BY count DESC LIMIT 100`
+    ).all(...params);
+    return { patterns: rows, hours };
   });
 
   // Distinct values to populate filter dropdowns in the UI.

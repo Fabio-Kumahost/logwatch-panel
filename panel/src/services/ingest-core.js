@@ -4,12 +4,13 @@
 import { db } from '../db/index.js';
 import { normalizeLevel, maskSecrets } from '../utils/normalize.js';
 import { extractFields } from '../utils/parse.js';
+import { fingerprint } from '../utils/fingerprint.js';
 import { hub } from '../ws/hub.js';
 import { evaluate } from './alerts.js';
 
 const insert = db.prepare(
-  `INSERT INTO logs(server_id, ts, source, service, level, host, message, fields)
-   VALUES(@server_id, @ts, @source, @service, @level, @host, @message, @fields)`
+  `INSERT INTO logs(server_id, ts, source, service, level, host, message, fields, fp)
+   VALUES(@server_id, @ts, @source, @service, @level, @host, @message, @fields, @fp)`
 );
 
 // entries: [{ ts?, source?, service?, level?, host?, message }]
@@ -29,6 +30,7 @@ export function storeEntries(server, entries, logger) {
       host: e.host || server.hostname || null,
       message,
       fields: fields ? JSON.stringify(fields) : null,
+      fp: fingerprint(message),
     };
   });
 

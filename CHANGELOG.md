@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.6.0] — 2026-06-10 — "Intelligence"
+### Added
+- **Log pattern clustering**: lines are fingerprinted on ingest (variables →
+  tokens) and grouped into templates — `GET /api/v1/logs/patterns`, new Insights
+  view. Click a pattern to see its logs (`fp` filter).
+- **Anomaly detection**: statistical error-rate spike detection + **new-error
+  pattern** alerts (never-before-seen error fingerprints), with warmup so the
+  backlog doesn't alert.
+- **AI assistant (optional, Claude via official @anthropic-ai/sdk)**: "Explain
+  with AI" on any log entry and natural-language search ("✨ Ask"). Enabled by
+  setting `ANTHROPIC_API_KEY`; model configurable via `AI_MODEL` (default
+  `claude-opus-4-8`).
+- **Threat sources**: aggregates external attacker IPs from auth/access logs
+  (`GET /api/v1/threats`) in the Insights view; private IPs excluded.
+### Deferred
+- SSO/OIDC moved to v1.7 (security-critical, needs dedicated provider testing).
+
 ## [1.5.0] — 2026-06-10 — "Platform"
 ### Added
 - **Structured field extraction** on ingest (JSON, key=value, nginx/apache access

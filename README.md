@@ -67,6 +67,12 @@ pushed a Discord/Gotify/Telegram/email alert the moment something breaks.
 - **Foreign-source ingest**: Vector, Fluent Bit, rsyslog, OpenTelemetry via HTTP; optional **UDP syslog**
 - **Host metrics** from the agent (CPU/RAM/disk/load) with charts + threshold alerts
 
+**Intelligence (v1.6)**
+- **Log clustering** — millions of lines grouped into ~templates (no ML); click a pattern to drill in
+- **Anomaly detection** — error-rate spikes + **new-error pattern** alerts
+- **AI assistant** (optional, Claude) — "Explain with AI" on any log + natural-language search
+- **Threat sources** — top external attacker IPs from auth/access logs
+
 ## Collected log sources
 
 systemd journal · `/var/log/syslog` · `/var/log/messages` · `auth.log` · `secure` ·

@@ -137,3 +137,11 @@ CREATE TABLE IF NOT EXISTS host_metrics (
   uptime    INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_hostmetrics_server_ts ON host_metrics(server_id, ts DESC);
+
+-- Distinct log patterns ever seen, for "new error" detection.
+CREATE TABLE IF NOT EXISTS seen_patterns (
+  fp         TEXT PRIMARY KEY,
+  first_seen INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  level      TEXT,
+  sample     TEXT
+);

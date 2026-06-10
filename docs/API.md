@@ -113,6 +113,10 @@ Query params (all optional):
 
 → `{ "logs": [ … ], "limit": 200, "offset": 0 }`
 
+### `GET /api/v1/logs/patterns?hours=&server_id=&level=`
+Log clustering: groups logs by fingerprint (variables tokenized) into templates,
+top patterns first. Filter `/logs` by an exact pattern with `?fp=<fingerprint>`.
+
 ### `GET /api/v1/logs/facets` → `{ sources, services, levels }` for filter UIs
 ### `GET /api/v1/logs/stats` → totals + per-level counts (last 24h)
 
@@ -171,6 +175,14 @@ Emits one JSON log entry per message.
 
 Note: `DELETE /api/v1/servers/:id` returns immediately; the server's log history is
 purged in background chunks so large histories never block the panel.
+
+## Intelligence (v1.6)
+- `GET /api/v1/threats?hours=` — top external attacker IPs from auth/access logs.
+- `GET /api/v1/ai/status` → `{ enabled, model }`.
+- `POST /api/v1/ai/explain` `{ id | message }` — Claude root-cause + fix (requires `ANTHROPIC_API_KEY`; else 503).
+- `POST /api/v1/ai/search` `{ query }` — natural language → `{ filter, params }` for `/logs`.
+- Anomaly detection runs server-side and emits **new error pattern** / **error
+  rate spike** system alerts (toggle with the `anomaly_enabled` setting).
 
 ## Health
 ### `GET /api/v1/health` → `{ "status": "ok", "version": "<panel version>", "time": <unix> }`
